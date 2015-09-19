@@ -19,7 +19,7 @@ errors(L)      -> info("Errors: ~p~n",[L]), true.
 
 return(true)   -> 1;
 return(false)  -> 0;
-return({ok,_}) -> [];
+return({ok,L}) -> info("Command: ~p~n",[L]), [];
 return(X)      -> X.
 
 help(Reason, Data) -> help(io_lib:format("~s ~p", [Reason, Data])).
