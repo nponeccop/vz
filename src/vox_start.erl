@@ -10,7 +10,11 @@ start(App) ->
     {Json   } = jsone:decode(Bin),
     {Process} = proplists:get_value(<<"process">>,Json),
     Args      = proplists:get_value(<<"args">>,Process),
-    Concat    = ["chroot","--userspec=99:99", "rootfs"] ++ lists:map(fun(X) -> binary_to_list(X) end,Args),
+    {User}    = proplists:get_value(<<"user">>,Process),
+    Uid       = proplists:get_value(<<"uid">>,User,0),
+    Gid       = proplists:get_value(<<"gid">>,User,0),
+    UserSpec  = lists:flatten(io_lib:format("--userspec=~p:~p", [Uid,Gid])),
+    Concat    = ["chroot",UserSpec,"rootfs"] ++ lists:map(fun(X) -> binary_to_list(X) end,Args),
     vox:info("Oneliner: ~p~n",[Concat]),
     {_,R,S}   = sh:run(Concat,<<"log">>,Dir),
     {ret(R),S}.
