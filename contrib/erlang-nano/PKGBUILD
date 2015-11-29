@@ -1,0 +1,56 @@
+# Maintainer: andy.melnikov@gmail.com
+pkgname=erlang-nano
+pkgver=0.1
+pkgrel=1
+epoch=
+pkgdesc=""
+arch=(i686)
+url=""
+license=('GPL')
+groups=()
+depends=('zlib' 'ncurses' 'coreutils')
+makedepends=('erlang-nox')
+checkdepends=()
+optdepends=()
+provides=()
+conflicts=()
+replaces=()
+backup=()
+options=()
+install=
+changelog=
+source=(escript)
+       
+noextract=()
+md5sums=(SKIP)
+validpgpkeys=()
+
+prepare() {
+	cd
+	#cd "$pkgname-$pkgver"
+	#patch -p1 -i "$srcdir/$pkgname-$pkgver.patch"
+}
+
+build() {
+	cd
+	#cd "$pkgname-$pkgver"
+	#./configure --prefix=/usr
+	#make
+}
+
+check() {
+	cd
+	#cd "$pkgname-$pkgver"
+	#make -k check
+}
+
+package() {
+	pkgdir2=$pkgdir/usr/lib/$pkgname
+	mkdir -p $pkgdir2/{bin,lib/{kernel-4.1,stdlib-2.6}}
+	cp /usr/lib/erlang/erts-7.1/bin/beam.smp $pkgdir2/bin
+	cp /usr/lib/erlang/bin/start_clean.boot $pkgdir2/bin/start.boot
+	cp -r /usr/lib/erlang/lib/kernel-4.1/ebin $pkgdir2/lib/kernel-4.1
+	cp -r /usr/lib/erlang/lib/stdlib-2.6/ebin $pkgdir2/lib/stdlib-2.6
+	mkdir -p $pkgdir/usr/bin
+	cp escript $pkgdir/usr/bin 
+}
