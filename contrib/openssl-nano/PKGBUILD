@@ -1,0 +1,54 @@
+# Maintainer: andy.melnikov@gmail.com
+pkgname=openssl-nano
+pkgver=0.1
+pkgrel=1
+epoch=
+pkgdesc=""
+arch=(i686)
+url=""
+license=('GPL')
+groups=()
+depends=('zlib')
+makedepends=('openssl')
+checkdepends=()
+optdepends=()
+provides=(openssl)
+conflicts=(openssl)
+replaces=()
+backup=()
+options=()
+install=
+changelog=
+source=()
+       
+noextract=()
+md5sums=()
+validpgpkeys=()
+
+prepare() {
+	cd
+	#cd "$pkgname-$pkgver"
+	#patch -p1 -i "$srcdir/$pkgname-$pkgver.patch"
+}
+
+build() {
+	cd
+	#cd "$pkgname-$pkgver"
+	#./configure --prefix=/usr
+	#make
+}
+
+check() {
+	cd
+	#cd "$pkgname-$pkgver"
+	#make -k check
+}
+
+package() {
+	cd
+	tar --numeric-owner --xattrs --acls -cJvf openssl.txz -C / $(pacman -Qlq openssl | grep -Ev '/$|man|include|pkgconfig|misc|bin' | xargs)
+	tar -xJvf openssl.txz -C $pkgdir
+
+}
+
+
