@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 R=/usr/lib/erlang-nano
 export BINDIR=$R/bin
 exec $BINDIR/beam.smp -pc unicode -- -root $R -noshell -noinput -run escript -extra $*
