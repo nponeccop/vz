@@ -37,8 +37,10 @@ copie_ldd ()
  
 for prog in "$@"
 do
- 	prog=$(which "$prog")
+ 	prog=$(which "$prog") || $prog
  	prog_real=$(readlink -f "$prog")
  	copie_ldd "$prog_real" "${rep}${prog}"	
 done
 
+mkdir $rep/{tmp,dev,sys,proc,run,etc}
+touch $rep/etc/resolv.conf
