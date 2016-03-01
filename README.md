@@ -1,6 +1,5 @@
-# vz
+# vz [![Join the chat at https://gitter.im/nponeccop/vz](https://badges.gitter.im/nponeccop/vz.svg)](https://gitter.im/nponeccop/vz?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-[![Join the chat at https://gitter.im/nponeccop/vz](https://badges.gitter.im/nponeccop/vz.svg)](https://gitter.im/nponeccop/vz?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 OpenVZ MAD Profile
 
 A way to run chroot-based "containers" on OpenVZ hosts.
@@ -31,3 +30,34 @@ For executables that are known to rely only on dynamic libraries, `ldd-trace` pr
   $ du -sBK ls-chroot/
   2312K   ls-chroot/
 ```
+
+strace-trace
+------------
+
+For more complex cases, `strace-trace` uses `strace` Linux only tool to trace system calls and find all files opened during the test run:
+
+```shell
+  $ strace-trace perl -MHTTP::Date -e 'print time2str(time())."\n"'
+  $ cat spec
+  /etc/localtime
+  /usr/bin/perl
+  /usr/lib/libc.so.6
+  /usr/lib/libcrypt.so.1
+  /usr/lib/libdl.so.2
+  /usr/lib/libm.so.6
+  /usr/lib/libpthread.so.0
+  /usr/lib/locale/locale-archive
+  /usr/lib/perl5/core_perl/CORE/libperl.so
+  /usr/lib/perl5/core_perl/Config.pm
+  /usr/share/perl5/core_perl/Carp.pm
+  /usr/share/perl5/core_perl/Exporter.pm
+  /usr/share/perl5/core_perl/Time/Local.pm
+  /usr/share/perl5/core_perl/constant.pm
+  /usr/share/perl5/core_perl/strict.pm
+  /usr/share/perl5/core_perl/vars.pm
+  /usr/share/perl5/core_perl/warnings.pm
+  /usr/share/perl5/core_perl/warnings/register.pm
+  /usr/share/perl5/vendor_perl/HTTP/Date.pm
+```
+
+The `spec` file created in current directory can be used to create a minimal chroot 
