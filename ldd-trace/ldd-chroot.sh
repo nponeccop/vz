@@ -42,5 +42,5 @@ do
  	copie_ldd "$prog_real" "${rep}${prog}"	
 done
 
-mkdir $rep/{tmp,dev,sys,proc,run,etc}
+mkdir $rep/{tmp,dev,sys,proc,run,etc,var/{tmp,cache,db,run,log}}
 touch $rep/etc/resolv.conf
