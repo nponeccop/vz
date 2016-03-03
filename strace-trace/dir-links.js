@@ -1,7 +1,7 @@
 var fs = require('fs')
 var path = require('path')
 var f = fs.readFileSync(process.argv[2], {encoding:'utf-8'}).split('\n')
-
+var assert = require('assert')
 f.pop()
 
 var l = {}
@@ -10,28 +10,20 @@ var SRC = '/'
 
 f.forEach(function (src)
 {
-	var p = ''
-	path.dirname(src).split('/').forEach(function (comp)
+	var d = path.relative(SRC, src)
+	console.log(path.resolve(SRC, d.split('/').reduce(function (p, comp)
 	{
+		assert.notEqual(comp, '')
 		var np = p + '/' + comp
 
-		if (fs.lstatSync(SRC + np).isSymbolicLink())
+		if (fs.lstatSync(np).isSymbolicLink())
 		{
-			var rp = fs.readlinkSync(SRC + np)
-			if (! (np in l))
-			{
-				l[np] = rp
-				var relRp = path.relative(SRC + p, SRC + np)
-				console.log('mkdir -p $DST/%s\ncd $DST/%s\nln -s %s %s', rp, p, rp, relRp)
-			}
-			p = rp
+			console.log(np)
+			return path.resolve(SRC, p, fs.readlinkSync(np))
 		}
 		else
 		{
-			p = np		
+			return np
 		}
-	})
-
-//	p += '/' + path.basename(src)
-//	console.log('install %s', p)
+	}, '')))
 })
