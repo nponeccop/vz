@@ -2,11 +2,11 @@
 set -ex
 OUT=$1
 shift
-strace -e 'trace=open,execve' -f -q -o strace.log $*
+strace -e 'trace=open,execve' -f -q -o strace.log $* || true
 
 node ./dir-links.js <(
 
-(cat strace.log | grep -Ev '(ENOENT|^(\+\+\+|---)|(\+\+\+|---)$)' | cut -d '"' -f 2 |  grep -vE '^/(dev|sys|run|tmp|proc)/|^(/etc/ld.so.cache|/)$' ;
+(cat strace.log | grep -E '^[0-9]+  [a-z]+\(' | grep -Ev 'ENOENT' | cut -d '"' -f 2 |  grep -vE '^/(dev|sys|run|tmp|proc)/|^(/etc/ld.so.cache|/)$';
 cat <<bar
 /run
 /dev
