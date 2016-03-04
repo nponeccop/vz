@@ -2,16 +2,17 @@ var fs = require('fs')
 var path = require('path')
 var f = fs.readFileSync(process.argv[2], {encoding:'utf-8'}).split('\n')
 var assert = require('assert')
+var shebang = require('./shebang')
 f.pop()
 
 var l = {}
 
 var SRC = '/'
 
-f.forEach(function (src)
+function resolve(src)
 {
 	var d = path.relative(SRC, src)
-	console.log(path.resolve(SRC, d.split('/').reduce(function (p, comp)
+	var p = path.resolve(SRC, d.split('/').reduce(function (p, comp)
 	{
 		assert.notEqual(comp, '')
 		var np = p + '/' + comp
@@ -25,5 +26,13 @@ f.forEach(function (src)
 		{
 			return np
 		}
-	}, '')))
-})
+	}, ''))
+	console.log(p)
+	var sb = shebang.check(p)
+	if (sb != null)
+	{
+		resolve(sb)
+	}
+}
+
+f.forEach(resolve)
