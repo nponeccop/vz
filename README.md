@@ -1,8 +1,23 @@
 # vz [![Join the chat at https://gitter.im/nponeccop/vz](https://badges.gitter.im/nponeccop/vz.svg)](https://gitter.im/nponeccop/vz?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-OpenVZ MAD Profile
+A distributed private cloud capable of running "containers" on OpenVZ hosts.
 
-A way to run chroot-based "containers" on OpenVZ hosts.
+Few definitions:
+
+- cloud := an API to deploy applications and allocate resources across more than one VPS
+- distributed cloud := a cloud with VPS provided by more than one vendor
+- private cloud := a cloud with command & control system not controlled by VPS vendors (talk less by a single vendor)
+- container := a partition of a VPS allowing multiple POSIX/libc applications coexist without clashes of dependency versions
+
+The weak definition of containers allows for such weak forms of isolation as chroots or even NIX-style isolation. So unlike
+cgroups/namespaces/LXC-based containers (runc, docker, rkt..) it's possible to run multiple containers inside OpenVZ containers 
+with older kernels. It has an advantage of very low cost (e.g. twice as cheaper than KVM/Xen). And with such low operation cost even 
+a hobbyist can afford operating a complex multi-server web service for years. And I hope that such improved longevity of hobbyist 
+projects will bring more innovations to the web, as entry cost is at least twice as lower.
+
+One problem of using cheaper VPS providers is that many of them die each year. So some provisions for redundancy must be made,
+as a VPS can just disappear along with its hosting company without any notice.
+
 
 ldd-trace
 ---------
