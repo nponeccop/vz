@@ -17,7 +17,7 @@ function resolve(src)
 		assert.notEqual(comp, '')
 		var np = p + '/' + comp
 
-		if (fs.lstatSync(np).isSymbolicLink())
+		if (fs.existsSync(np) && fs.lstatSync(np).isSymbolicLink())
 		{
 			console.log(np)
 			return path.resolve(SRC, p, fs.readlinkSync(np))
@@ -27,11 +27,14 @@ function resolve(src)
 			return np
 		}
 	}, ''))
-	console.log(p)
-	var sb = shebang.check(p)
-	if (sb != null)
+	if (fs.existsSync(p))
 	{
-		resolve(sb)
+		console.log(p)
+		var sb = shebang.check(p)
+		if (sb != null)
+		{
+			resolve(sb)
+		}
 	}
 }
 
