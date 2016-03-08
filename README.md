@@ -11,13 +11,62 @@ Few definitions:
 
 The weak definition of containers allows for such weak forms of isolation as chroots or even NIX-style isolation. So unlike
 cgroups/namespaces/LXC-based containers (runc, docker, rkt..) it's possible to run multiple containers inside OpenVZ containers 
-with older kernels. It has an advantage of very low cost (e.g. twice as cheaper than KVM/Xen). And with such low operation cost even 
-a hobbyist can afford operating a complex multi-server web service for years. And I hope that such improved longevity of hobbyist 
-projects will bring more innovations to the web, as entry cost is at least twice as lower.
+with older kernels. It has an advantage of very low cost (e.g. twice as cheaper as KVM/Xen, e.g. BudgetVM vs DigitalOcean). And with such low operation cost even a hobbyist can afford operating a complex multi-server web service for years. And I hope that such improved longevity of hobbyist projects will bring more innovations to the web, as entry cost is at least twice as lower.
 
 One problem of using cheaper VPS providers is that many of them die each year. So some provisions for redundancy must be made,
 as a VPS can just disappear along with its hosting company without any notice.
 
+Competitors
+-----------
+Rootfs:
+- CoreOS
+- RancherOS
+- PhotonOS
+- Ubuntu Snap
+- RedHat Atomic
+- Alpine Linux
+
+Container runners:
+- docker/runc
+- garden/warden
+
+Command and control:
+- fleet/etcd
+
+Supervision:
+- systemd
+- openrc
+- raw busybox-based /sbin/init
+
+Essential Components
+--------------------
+
+Master-slave:
+
+- remote container start/stop
+- image transfer and storage
+
+Slave only:
+
+- rootfs
+- container runner
+- autonomous container crash supervision and auto restart
+
+Master only:
+
+- container rootfs build system
+- assembly of OCI images
+
+Optional Components:
+--------------------
+
+Master-slave:
+
+- logging and monitoring
+- differential image compression
+
+Master only:
+- central management, orchestration and monitoring console
 
 ldd-trace
 ---------
