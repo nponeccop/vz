@@ -48,7 +48,6 @@ Master-slave:
 
 Slave only:
 
-- rootfs
 - container runner
 - autonomous container crash supervision and auto restart
 
@@ -64,6 +63,11 @@ Master-slave:
 
 - logging and monitoring
 - differential image compression
+ 
+Slave only:
+
+- rootfs
+- rootfs installer
 
 Master only:
 - central management, orchestration and monitoring console
