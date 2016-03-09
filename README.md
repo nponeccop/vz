@@ -16,6 +16,20 @@ with older kernels. It has an advantage of very low cost (e.g. twice as cheaper 
 One problem of using cheaper VPS providers is that many of them die each year. So some provisions for redundancy must be made,
 as a VPS can just disappear along with its hosting company without any notice.
 
+Idealized Workflow
+------------------
+
+- Spend $15/month in total for a few VPS from different hostings
+- Run `vzexec newnode` with only IPs and root passwords from activation emails
+- The preinstalled OS is detected and replaced with VzOS, SSH keys are used from now on
+- Define application pods configuration in the spirit of Kubernetes/Dokku/Heroku
+- Run `vzexec deploy` to build and push a new version of your application
+- Go to sleep
+- Notice that one of your VPSes has gone without any emails descibing what happened
+- Order a new node from someone else
+- Rerun `newnode`/`deploy`
+- Go to sleep again
+
 Architecture
 ------------
 
@@ -25,9 +39,10 @@ Architecture
 - 32-bit `i686` as the main target architecture to save RAM. RAM is what is paid for. More RAM means more money, and saving 200 MB of RAM gives significant advantages on 512MB VPS. Fat runtimes for fat containers already exist.
 - `vzexec` master works as a frontend to `ansible`
 - `vzexec` slave works as a shell or an SSH subsystem
+- `runch` implements an open Open Containers Initiative (OCI) specification, along with Docker/libcontainer `runc` and VM `runv`
 - ideally no interactive shell whatsoever, except for emergencies
 - image push over SFTP (not pull over HTTPS, so no image registry)
-- flat images without layers in v1 (i.e. simple tarballs of OCI bundles)
+- flat images without layers in the initial release (i.e. simple tarballs of OCI bundles)
 
 Status
 ------
@@ -58,8 +73,8 @@ Supervision:
 - openrc
 - raw busybox-based /sbin/init
 
-Essential Components
---------------------
+Goals for 1.0
+-------------
 
 Master-slave:
 
@@ -76,8 +91,8 @@ Master only:
 - container rootfs build system
 - assembly of OCI images
 
-Optional Components:
---------------------
+Goals for 2.0
+-------------
 
 Master-slave:
 
@@ -92,8 +107,10 @@ Slave only:
 Master only:
 - central management, orchestration and monitoring console
 
-ldd-trace
----------
+Available Components
+--------------------
+
+### ldd-trace
 
 For executables that are known to rely only on dynamic libraries, `ldd-trace` provides a way to create minimal chroots:
 
@@ -119,8 +136,7 @@ For executables that are known to rely only on dynamic libraries, `ldd-trace` pr
   2312K   ls-chroot/
 ```
 
-strace-trace
-------------
+### strace-trace
 
 For more complex cases, `strace-trace` uses `strace` Linux only tool to trace system calls and find all files opened during the test run:
 
@@ -148,4 +164,4 @@ For more complex cases, `strace-trace` uses `strace` Linux only tool to trace sy
   /usr/share/perl5/vendor_perl/HTTP/Date.pm
 ```
 
-The `spec` file created in current directory can be used to create a minimal chroot 
+The `spec` file created in current directory can be used to create a minimal OCI rootfs/chroot 
