@@ -13,7 +13,7 @@ function grep_nosys {
 (
 node $DIR/dir-links.js <(
 
-	cat strace.log | grep -E '^[0-9]+  [a-z]+\(' | grep -Ev 'ENOENT' | cut -d '"' -f 2 | grep_nosys | sort -u
+	cat strace.log | grep -E '^[0-9]+ +[a-z]+\(' | grep -Ev 'ENOENT' | cut -d '"' -f 2 | grep_nosys | sort -u
 	echo /usr/lib/ld-linux.so.2
 ) | grep_nosys
 
