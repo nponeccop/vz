@@ -20,6 +20,7 @@ exports.check = function (fname)
 	var b = new Buffer(1024)
 	b[0] = 0
 	fs.readSync(h, b, 0, b.length)
+	fs.closeSync(h)
 	if (b[0] == she && b[1] == bang && b[2] == slash)
 	{
 		for (var i = 0; i < b.length; i++)
