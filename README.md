@@ -25,10 +25,12 @@ Idealized Workflow
 - Define application pods configuration in the spirit of Kubernetes/Dokku/Heroku
 - Run `vzexec deploy` to build and push a new version of your application
 - Go to sleep
-- Notice that one of your VPSes has gone without any emails descibing what happened
+- Notice that one of your VPSes has gone without any emails from the company
 - Order a new node from someone else
 - Rerun `newnode`/`deploy`
 - Go to sleep again
+- Write another application and deploy it across the same redundant array of inexpensive VPSes
+- Migrate to Docker or VMs and back as your financial power changes over time
 
 Architecture
 ------------
@@ -42,7 +44,7 @@ Architecture
 - `runch` implements an open Open Containers Initiative (OCI) specification, along with Docker/libcontainer `runc` and VM `runv`
 - ideally no interactive shell whatsoever, except for emergencies
 - image push over SFTP (not pull over HTTPS, so no image registry)
-- flat images without layers in the initial release (i.e. simple tarballs of OCI bundles)
+- flat images without layers in 1.0 (i.e. simple tarballs of OCI bundles)
 
 Status
 ------
@@ -67,6 +69,9 @@ Container runners:
 
 Command and control:
 - fleet/etcd
+- kubernetes
+- Heroku
+- Dokku
 
 Supervision:
 - systemd
