@@ -16,6 +16,26 @@ with older kernels. It has an advantage of very low cost (e.g. twice as cheaper 
 One problem of using cheaper VPS providers is that many of them die each year. So some provisions for redundancy must be made,
 as a VPS can just disappear along with its hosting company without any notice.
 
+Architecture
+------------
+
+- all security is provided by OpenSSH and not by inmature TLS server implementations
+- all management is peformed by `ansible`. No management or data collection daemon processes whatsoever on slaves besides `init` and `sshd`.
+- ideally all containers are directly supervised by `init`/`PID 0` in the spirit of `/etc/inittab`
+- 32-bit `i686` as the main target architecture to save RAM. RAM is what is paid for. More RAM means more money, and saving 200 MB of RAM gives significant advantages on 512MB VPS. Fat runtimes for fat containers already exist.
+- `vzexec` master works as a frontend to `ansible`
+- `vzexec` slave works as a shell or an SSH subsystem
+- ideally no interactive shell whatsoever, except for emergencies
+- image push over SFTP (not pull over HTTPS, so no image registry)
+- flat images without layers in v1 (i.e. simple tarballs of OCI bundles)
+
+Status
+------
+
+- `strace-trace` can create OCI `rootfs`. It only needs renaming and better integration with other components. E.g. something like `vzbuild strace`
+- `runch start` can run basic bundles. It needs to support complex command lines, `cwd` and mounting instructions from OCI `config.json` to be generally useful
+- `vzexec`/`vox` needs to use `runch` instead of doing its job
+
 Competitors
 -----------
 Rootfs:
