@@ -49,7 +49,6 @@ cat >tmp-start.yaml <<PLAY
   - file: state=directory path={{ vzexec.path }}bin
   - copy: src=../runch/runch.sh dest={{ vzexec.path }}bin/runch mode=755
   - command: "{{ vzexec.path }}/bin/runch start {{ vzexec.path }}bundles/{{ vzexec.image }}"
-    become: yes
 PLAY
 	ansible-playbook tmp-start.yaml
 }

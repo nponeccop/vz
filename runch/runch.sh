@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 function cmd_start 
 {
-	set -ex
+	set -e
 	local bundle=$1
 	if [ -z "$bundle" ]
 	then
@@ -16,25 +16,18 @@ function cmd_start
 		echo "$bundle/config.json doesn't exist" >&2
 		exit
 	fi
-	local uu=$(jshon -F $bundle/config.json -e root -e path -u -pp -e process -e args -au -pp -e user -e uid -u -p -e gid -u -pp |
-	(
-	read root
-	read args
-	read uid
-	read gid
+	local jshon="jshon -F $bundle/config.json"
+	local root=$($jshon -e root -e path -u)
+	local args=$($jshon -e process -e args -a -u | xargs)
+	local uid=$($jshon -e process -e user -e uid)
+	local gid=$($jshon -e process -e user -e gid)
 	local cwd=/ # temporary until cwd is supported by chroot
-	cd $bundle$cwd 
-	echo $uid:$gid $bundle/$root $args
-	)
-	)
-
-	echo arch-chroot --userspec $uu
-
-	nohup ls &
+	#cd $bundle$cwd
+	sudo chroot --userspec $uid:$gid $bundle/$root $args
 	local pid=$!
 	local id=$(basename bundle)
 	local path=/run/opencontainer/chroots/$id
-	mkdir -p $path
+	sudo install -o $UID -d $path
 	cat >$path/state.json <<-END
 	{ "config" : $(cat $bundle/config.json)
 	, "init_process_pid" : $pid

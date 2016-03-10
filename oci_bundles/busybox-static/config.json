@@ -1,0 +1,7 @@
+
+{"process" : 
+    { "args" : [ "/usr/bin/busybox", "echo", "42" ]
+    , "user": { "uid" : 1000 , "gid" : 1000 }
+	}
+, "root" : { "path" : "rootfs" }
+}
