@@ -25,5 +25,11 @@ cat <<bar
 /proc
 /etc/resolv.conf
 /lib
+/mnt
+/sbin
+/usr/sbin
+/srv
+/opt
+/bin
 bar
 ) | sort -u -o $OUT
