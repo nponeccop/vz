@@ -18,9 +18,40 @@ function cmd_push
 	ansible all -m copy -a "src=images/$image.txz dest=/home/$USER/.vzexec/images/"
 }
 
-set -e
+function cmd_start
+{
+	local image=$1
+	if [ -z "$image" ]
+	then
+		echo "push: image cannot be empty" >&2
+		exit
+	fi
+
+	if [ -f images/$image.txz ]
+	then
+		true
+	else
+		echo "images/$image.txz doesn't exist" >&2
+		exit
+	fi
+cat >tmp-start.yaml <<PLAY
+---
+- hosts: all
+  vars:
+    vzexec:
+      path: /home/$USER/.vzexec/
+      image: $image
+  tasks:
+  - file: state=directory path={{ vzexec.path }}/bundles/{{ vzexec.image }}
+  - unarchive: copy=no src={{ vzexec.path }}/images/{{ vzexec.image }}.txz dest={{ vzexec.path }}/bundles/{{ vzexec.image }}
+    become: yes
+PLAY
+	ansible-playbook tmp-start.yaml
+}
+
+set -ex
 case $1 in
-    push)
+    push|start)
       cmd_$1 $2
       ;;
 	*)
@@ -28,4 +59,3 @@ case $1 in
 	  exit
       ;;
 esac
-
