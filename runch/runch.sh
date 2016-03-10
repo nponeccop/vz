@@ -28,15 +28,31 @@ function cmd_start
 	)
 
 	echo arch-chroot --userspec $uu
+
+	nohup ls &
+	local pid=$!
+	local id=$(basename bundle)
+	local path=/run/opencontainer/chroots/$id
+	mkdir -p $path
+	cat >$path/state.json <<-END
+	{ "config" : $(cat $bundle/config.json)
+	, "init_process_pid" : $pid
+	, "id" : "$id"
+	, "created" : "$(date -Is)"
+	}
+	END
 }
 
 set -e
 case $1 in
     start)
-      cmd_start $2
+      cmd_$1 $2
       ;;
+	"")
+		echo "Empty command" >&2
+		;;
 	*)
-      echo "Invalid command: -$1" >&2
+      echo "Invalid command: $1" >&2
 	  exit
       ;;
 esac
