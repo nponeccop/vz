@@ -43,9 +43,15 @@ function cmd_start
 	END
 }
 
+function cmd_kill
+{
+	local id=$1
+	kill $(jshon </run/opencontainer/chroots/$id/state.json -e init_process_pid)
+}
+
 set -e
 case $1 in
-    start)
+    start|kill)
       cmd_$1 $2
       ;;
 	"")
@@ -56,4 +62,3 @@ case $1 in
 	  exit
       ;;
 esac
-
