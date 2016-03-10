@@ -20,10 +20,10 @@ Idealized Workflow
 ------------------
 
 - Spend $15/month in total for a few VPS from different hostings
-- Run `vzexec newnode` with only IPs and root passwords from activation emails
+- Run `vzmaster newnode` with only IPs and root passwords from activation emails
 - The preinstalled OS is detected and replaced with VzOS, SSH keys are used from now on
 - Define application pods configuration in the spirit of Kubernetes/Dokku/Heroku
-- Run `vzexec deploy` to build and push a new version of your application
+- Run `vzmaster deploy` to build and push a new version of your application
 - Go to sleep
 - Notice that one of your VPSes has gone without any emails from the company
 - Order a new node from someone else
@@ -39,8 +39,8 @@ Architecture
 - all management is peformed by `ansible`. No management or data collection daemon processes whatsoever on slaves besides `init` and `sshd`.
 - ideally all containers are directly supervised by `init`/`PID 0` in the spirit of `/etc/inittab`
 - 32-bit `i686` as the main target architecture to save RAM. RAM is what is paid for. More RAM means more money, and saving 200 MB of RAM gives significant advantages on 512MB VPS. Fat runtimes for fat containers already exist.
-- `vzexec` master works as a frontend to `ansible`
-- `vzexec` slave works as a shell or an SSH subsystem
+- `vzmaster` works as a frontend to `ansible`
+- `vzslave` works as a shell or an SSH subsystem
 - `runch` implements an open Open Containers Initiative (OCI) specification, along with Docker/libcontainer `runc` and VM `runv`
 - ideally no interactive shell whatsoever, except for emergencies
 - image push over SFTP (not pull over HTTPS, so no image registry)
@@ -51,7 +51,7 @@ Status
 
 - `strace-trace` can create OCI `rootfs`. It only needs renaming and better integration with other components. E.g. something like `vzbuild strace`
 - `runch start` can run basic bundles. It needs to support complex command lines, `cwd` and mounting instructions from OCI `config.json` to be generally useful
-- `vzexec`/`vox` needs to use `runch` instead of doing its job
+- `vzslave`/`vox` needs to use `runch` instead of doing its job
 
 Competitors
 -----------
