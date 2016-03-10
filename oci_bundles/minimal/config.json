@@ -1,0 +1,9 @@
+
+{"process" : 
+    { "args" : [ "foo" ]
+    ,"user":
+        { "uid" : 98
+		, "gid" : 101
+	    }
+	}
+}
