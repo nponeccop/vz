@@ -24,7 +24,7 @@ function cmd_start
 	if [ -z "$image" ]
 	then
 		echo "push: image cannot be empty" >&2
-		exit
+		exit -2
 	fi
 
 	if [ -f images/$image.txz ]
@@ -32,7 +32,7 @@ function cmd_start
 		true
 	else
 		echo "images/$image.txz doesn't exist" >&2
-		exit
+		exit -1
 	fi
 cat >tmp-start.yaml <<PLAY
 ---
@@ -42,8 +42,13 @@ cat >tmp-start.yaml <<PLAY
       path: /home/$USER/.vzexec/
       image: $image
   tasks:
-  - file: state=directory path={{ vzexec.path }}/bundles/{{ vzexec.image }}
-  - unarchive: copy=no src={{ vzexec.path }}/images/{{ vzexec.image }}.txz dest={{ vzexec.path }}/bundles/{{ vzexec.image }}
+  - file: state=directory path={{ vzexec.path }}bundles/{{ vzexec.image }}
+  - unarchive: copy=no src={{ vzexec.path }}images/{{ vzexec.image }}.txz dest={{ vzexec.path }}bundles/{{ vzexec.image }}
+    become: yes
+  - package: state=present name=jshon
+  - file: state=directory path={{ vzexec.path }}bin
+  - copy: src=../runch/runch.sh dest={{ vzexec.path }}bin/runch mode=755
+  - command: "{{ vzexec.path }}/bin/runch start {{ vzexec.path }}bundles/{{ vzexec.image }}"
     become: yes
 PLAY
 	ansible-playbook tmp-start.yaml

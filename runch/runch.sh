@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 function cmd_start 
 {
+	set -ex
 	local bundle=$1
 	if [ -z "$bundle" ]
 	then
@@ -15,13 +16,13 @@ function cmd_start
 		echo "$bundle/config.json doesn't exist" >&2
 		exit
 	fi
-	local uu=$(jshon -F $bundle/config.json -e root -e path -u -pp -e process -e args -au -pp -e user -e uid -u -p -e gid -u -pp -e cwd -u |
+	local uu=$(jshon -F $bundle/config.json -e root -e path -u -pp -e process -e args -au -pp -e user -e uid -u -p -e gid -u -pp |
 	(
 	read root
 	read args
 	read uid
 	read gid
-	read cwd
+	local cwd=/ # temporary until cwd is supported by chroot
 	cd $bundle$cwd 
 	echo $uid:$gid $bundle/$root $args
 	)
