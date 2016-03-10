@@ -49,9 +49,14 @@ Architecture
 Status
 ------
 
-- `strace-trace` can create OCI `rootfs`. It only needs renaming and better integration with other components. E.g. something like `vzbuild strace`
-- `runch start` can run basic bundles. It needs to support complex command lines, `cwd` and mounting instructions from OCI `config.json` to be generally useful
-- `vzslave`/`vox` needs to use `runch` instead of doing its job
+- `strace-trace` creates OCI `rootfs` but requires tedious manual work
+- `vzmaster push` uploads images using Ansible
+- `runch start` runs basic bundles. To be generally useful it needs to support:
+  - monitoring and auto-restart
+  - complex command lines
+  - mounting instructions from OCI `config.json` or at least `arch-chroot` default mounts
+- `runch kill` is missing
+- `vzmaster {start|kill}` are missing, but they are only Ansible invocations of `runch`
 
 Competitors
 -----------
@@ -78,8 +83,14 @@ Supervision:
 - openrc
 - raw busybox-based /sbin/init
 
-Goals for 1.0
+Goals for 0.1
 -------------
+
+- Manual installation
+- PoC operation on CentOS 6/OpenVZ with manually created images (with help from `strace-chroot` to create the `rootfs` part)
+- `vzmaster {push|start|kill}` as a front end to Ansible ad hoc commands
+- `runch {start|kill}`
+- `runch start` monitors using a shell loop
 
 Master-slave:
 
@@ -88,8 +99,12 @@ Master-slave:
 
 Slave only:
 
-- container runner
-- autonomous container crash supervision and auto restart
+- container runner with integrated container crash supervision and auto restart
+
+Goals for 1.0
+-------------
+
+Less ad hoc implementation of what was in 0.x, and in addition:
 
 Master only:
 
@@ -114,6 +129,14 @@ Master only:
 
 Available Components
 --------------------
+
+### runch
+
+A clone of `runc` but for chroots. Start, kill.
+
+### vzmaster
+
+A front-end to Ansible. Push, start, kill.
 
 ### ldd-trace
 
