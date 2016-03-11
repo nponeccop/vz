@@ -236,3 +236,8 @@ Linux Distributions for OpenVZ
 | CentOS 6            | 2020.12 | SysV   | 2.6.32-042stab075.2 |
 | Ubuntu 14.04 LTS    | 2019.09 | SysV   | 2.6.32-042stab075.2 |
 | Debian 7 Wheezy LTS | 2018.06 | SysV   | 2.6.32-042stab075.2 |
+
+File an issue or PR if:
+- your VPS has another distribution or kernel
+- that distribution is fully supported until at least 2017.03 (CentOS 5 is not)
+- the combination actually works and is not merely advertised as available
