@@ -10,15 +10,34 @@ A distributed private cloud capable of running "containers" on OpenVZ hosts.
 Workflow of 0.1
 ---------------
 
-- Create a user with your current user name and passwordless `sudo` on the hosts
-- Configure Ansible and your hosts so `ansible all -m ping` is all green
-- Have your app installed somewhere (in full OS, Docker, chroot etc)
-- create `bundles/myapp` folder (`myapp` is an image name, you can use anything else)
-- Install `strace` there, run `strace-chroot` to get `myapp/rootfs` folder
-- Write `myapp/config.json` according to the Open Containers Initiative specification
-- Test the bundle (OCI term for rootfs+config) using `runch start myname` / `runch kill myname` (`runch` uses the basename as the OCI container id, so it shouldn't be '.')
-- tar-xz your OCI bundle (`rootfs` and `config.json`) to get an image (`images/appname.txz`)
-- run `vzmaster push appname && vzmaster start appname`
+Prepare a `rootfs` with your application:
+
+  - Export and untar from Docker
+  - or `debootstrap`, `febootstrap`, `pacstrap` and similar
+  - or `strace-chroot`
+
+Prepare a standard OCI bundle:
+
+  - `mkdir -p bundles/myapp`
+  - Move `rootfs` to `bundles/myapp/rootfs`, so you have `bundles/myapp/rootfs/usr/bin/..`
+  - Create `bundles/myapp/config.json` according to the Open Containers Initiative specification
+  - Test the bundle (OCI term for rootfs+config) using `runch start myname` / `runch kill myname` (`runch` uses the basename as the OCI container id, so it shouldn't be '.')
+
+Prepare an image:
+
+  - `mkdir images`
+  - `sudo tar --numeric-owner xJvf images/myapp.txz -C bundles/myapp .`. Verify that `tar` says `./rootfs/usr/bin/..`
+
+Configure slaves:
+
+  - Create a user with your current user name and passwordless `sudo` on the hosts
+  - Make sure Python 2.x is installed
+
+Configure the master
+
+  - Configure Ansible and your hosts so `ansible all -m ping` is all green
+
+Enjoy `vzmaster push appname && vzmaster start appname`
 
 Status
 ------
