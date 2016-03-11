@@ -2,12 +2,38 @@
 
 A distributed private cloud capable of running "containers" on OpenVZ hosts.
 
-Few definitions:
-
 - cloud := an API to deploy applications and allocate resources across more than one VPS
 - distributed cloud := a cloud with VPS provided by more than one vendor
 - private cloud := a cloud with command & control system not controlled by VPS vendors (talk less by a single vendor)
 - container := a partition of a VPS allowing multiple POSIX/libc applications coexist without clashes of dependency versions
+
+Workflow of 0.1
+---------------
+
+- Create a user with your current user name and passwordless `sudo` on the hosts
+- Configure Ansible and your hosts so `ansible all -m ping` is all green
+- Have your app installed somewhere (in full OS, Docker, chroot etc)
+- create `bundles/myapp` folder (`myapp` is an image name, you can use anything else)
+- Install `strace` there, run `strace-chroot` to get `myapp/rootfs` folder
+- Write `myapp/config.json` according to the Open Containers Initiative specification
+- Test the bundle (OCI term for rootfs+config) using `runch start myname` / `runch kill myname` (`runch` uses the basename as the OCI container id, so it shouldn't be '.')
+- tar-xz your OCI bundle (`rootfs` and `config.json`) to get an image (`images/appname.txz`)
+- run `vzmaster push appname && vzmaster start appname`
+
+Status
+------
+
+- `strace-trace` minimizes pre-existing rootfs
+- `vzmaster push` uploads images using Ansible
+- `vzmaster start` installs `runch` remotely, unpacks image and starts resuting OCI bundle using `ranch`
+- `runch start` reads chroot configuration from OCI `config.json` and runs basic bundles. To be generally useful it needs to support:
+  - auto-restart on crashes
+  - mounting instructions from OCI `config.json` or at least `arch-chroot` default mounts
+- `runch kill` works
+- `vzmaster kill` is missing, but it is only an Ansible wrapper of `runch`
+
+Why
+---
 
 The weak definition of containers allows for such weak forms of isolation as chroots or even NIX-style isolation. So unlike
 cgroups/namespaces/LXC-based containers (runc, docker, rkt..) it's possible to run multiple containers inside OpenVZ containers 
@@ -46,30 +72,6 @@ Architecture
 - image push over SFTP (not pull over HTTPS, so no image registry)
 - flat images without layers in 1.0 (i.e. simple tarballs of OCI bundles)
 
-Status
-------
-
-- `strace-trace` minimizes pre-existing rootfs
-- `vzmaster push` uploads images using Ansible
-- `vzmaster start` installs `runch` remotely, unpacks image and starts resuting OCI bundle using `ranch`
-- `runch start` reads chroot configuration from OCI `config.json` and runs basic bundles. To be generally useful it needs to support:
-  - auto-restart on crashes
-  - mounting instructions from OCI `config.json` or at least `arch-chroot` default mounts
-- `runch kill` works
-- `vzmaster kill` is missing, but it is only an Ansible wrapper of `runch`
-
-Workflow of 0.1
----------------
-
-- Create a user with your current user name and passwordless `sudo` on the hosts
-- Configure Ansible and your hosts so `ansible all -m ping` is all green
-- Have your app installed somewhere (in full OS, Docker, chroot etc)
-- create `bundles/myapp` folder (`myapp` is an image name, you can use anything else)
-- Install `strace` there, run `strace-chroot` to get `myapp/rootfs` folder
-- Write `myapp/config.json` according to the Open Containers Initiative specification
-- Test the bundle (OCI term for rootfs+config) using `runch start myname` / `runch kill myname` (`runch` uses the basename as the OCI container id, so it shouldn't be '.')
-- tar-xz your OCI bundle (`rootfs` and `config.json`) to get an image (`images/appname.txz`)
-- run `vzmaster push appname && vzmaster start appname`
 
 Competitors
 -----------
