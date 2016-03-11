@@ -227,3 +227,12 @@ For more complex cases, `strace-trace` uses `strace` Linux only tool to trace sy
 ```
 
 The `spec` file created in current directory can be used to create a minimal OCI rootfs/chroot 
+
+Linux Distributions for OpenVZ
+------------------------------
+
+| Distribution        | EOL     | Init   | Kernel              |
+|---------------------|---------|--------|---------------------|
+| CentOS 6            | 2020.12 | SysV   | 2.6.32-042stab075.2 |
+| Ubuntu 14.04 LTS    | 2019.09 | SysV   | 2.6.32-042stab075.2 |
+| Debian 7 Wheezy LTS | 2018.06 | SysV   | 2.6.32-042stab075.2 |
