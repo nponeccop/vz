@@ -49,14 +49,27 @@ Architecture
 Status
 ------
 
-- `strace-trace` creates OCI `rootfs` but requires tedious manual work
+- `strace-trace` minimizes pre-existing rootfs
 - `vzmaster push` uploads images using Ansible
-- `runch start` runs basic bundles. To be generally useful it needs to support:
-  - monitoring and auto-restart
-  - complex command lines
+- `vzmaster start` installs `runch` remotely, unpacks image and starts resuting OCI bundle using `ranch`
+- `runch start` reads chroot configuration from OCI `config.json` and runs basic bundles. To be generally useful it needs to support:
+  - auto-restart on crashes
   - mounting instructions from OCI `config.json` or at least `arch-chroot` default mounts
-- `runch kill` is missing
-- `vzmaster {start|kill}` are missing, but they are only Ansible invocations of `runch`
+- `runch kill` works
+- `vzmaster kill` is missing, but it is only an Ansible wrapper of `runch`
+
+Workflow of 0.1
+---------------
+
+- Create a user with your current user name and passwordless `sudo` on the hosts
+- Configure Ansible and your hosts so `ansible all -m ping` is all green
+- Have your app installed somewhere (in full OS, Docker, chroot etc)
+- create `bundles/myapp` folder (`myapp` is an image name, you can use anything else)
+- Install `strace` there, run `strace-chroot` to get `myapp/rootfs` folder
+- Write `myapp/config.json` according to the Open Containers Initiative specification
+- Test the bundle (OCI term for rootfs+config) using `runch start myname` / `runch kill myname` (`runch` uses the basename as the OCI container id, so it shouldn't be '.')
+- tar-xz your OCI bundle (`rootfs` and `config.json`) to get an image (`images/appname.txz`)
+- run `vzmaster push appname && vzmaster start appname`
 
 Competitors
 -----------
