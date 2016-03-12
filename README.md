@@ -39,6 +39,19 @@ Configure the master
 
 Enjoy `vzmaster push appname && vzmaster start appname`
 
+Bootstrap on CentOS 6 i686
+--------------------------
+
+- put your SSH public key to `bootstrap/ssh.pub` 
+- `cd bootstrap`
+- `./bootstrap.sh {server-ip} -k` (`-k` means ask for password. You can omit `-k` once the key is installed for root)
+- `ssh {server-ip}`
+- `sudo rpm -ivh http://dl.fedoraproject.org/pub/epel/6/i386/epel-release-6-8.noarch.rpm`
+- `sudo yum update`
+- `sudo yum install jansson`
+- `sudo rpm -ivh ftp://ftp.pbone.net/mirror/ftp5.gwdg.de/pub/opensuse/repositories/home:/dmuhamedagic/Fedora_18/i686/jshon-20121122-3.1.i686.rpm`
+- add the IP to your Ansible inventory
+
 Status
 ------
 
