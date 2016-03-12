@@ -1,0 +1,19 @@
+---
+- hosts: all
+  user: root
+  vars:
+    vzexec:
+      user: "{{ local_user.stdout }}"
+  roles:
+      - mivok0.sudo
+  tasks:
+      - name: get the username running the deploy
+        local_action: command whoami
+        register: local_user
+      - ping: ""
+      - user: name={{ vzexec.user }} state=present groups=wheel append=yes
+      - authorized_key: user={{ vzexec.user }} key="{{ item }}"
+        with_file: ./ssh.pub
+      - authorized_key: user=root key="{{ item }}"
+        with_file: ./ssh.pub
+
