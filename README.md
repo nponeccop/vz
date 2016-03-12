@@ -133,9 +133,9 @@ Supervision:
 Goals for 0.1
 -------------
 
-- Manual installation
+- Manual installation (with help from `bootstrap`)
 - PoC operation on CentOS 6/OpenVZ with manually created images (with help from `strace-chroot` to create the `rootfs` part)
-- `vzmaster {push|start|kill}` as a front end to Ansible ad hoc commands
+- `vzmaster {push|start|kill}` as a front end to Ansible
 - `runch {start|kill}`
 - `runch start` monitors using a shell loop
 
@@ -153,10 +153,14 @@ Goals for 1.0
 
 Less ad hoc implementation of what was in 0.x, and in addition:
 
+Slave only:
+
+- ability to substitute `runch` with `runc`
+
 Master only:
 
 - container rootfs build system
-- assembly of OCI images
+- assembly of OCI bundles
 
 Goals for 2.0
 -------------
