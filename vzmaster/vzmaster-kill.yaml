@@ -1,0 +1,4 @@
+---
+- hosts: all
+  tasks:
+  - command: "{{ vzexec.path }}/bin/runch kill {{ vzexec.container_id }}"

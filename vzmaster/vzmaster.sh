@@ -56,20 +56,9 @@ PLAY
 function cmd_kill
 {
 	local container_id=$1
-
-cat >tmp-kill.yaml <<PLAY
----
-- hosts: all
-  vars:
-    vzexec:
-      path: /home/$USER/.vzexec/
-      container_id: $container_id
-  tasks:
-  - command: "{{ vzexec.path }}/bin/runch kill {{ vzexec.container_id }}"
-PLAY
-	ansible-playbook tmp-kill.yaml
+	echo '{ "vzexec" : {} }' | jshon -e vzexec -s "/home/$USER/.vzexec" -i path -s "$container_id" -i container_id -p >tmp-kill.json
+	ansible-playbook -e @tmp-kill.json vzmaster-kill.yaml
 }
-
 
 set -ex
 case $1 in
