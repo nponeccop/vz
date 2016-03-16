@@ -34,23 +34,8 @@ function cmd_start
 		echo "start: images/$image.txz doesn't exist" >&2
 		exit -1
 	fi
-cat >tmp-start.yaml <<PLAY
----
-- hosts: all
-  vars:
-    vzexec:
-      path: /home/$USER/.vzexec/
-      image: $image
-  tasks:
-  - file: state=directory path={{ vzexec.path }}bundles/{{ vzexec.image }}
-  - unarchive: copy=no src={{ vzexec.path }}images/{{ vzexec.image }}.txz dest={{ vzexec.path }}bundles/{{ vzexec.image }}
-    become: yes
-  - package: state=present name=jshon
-  - file: state=directory path={{ vzexec.path }}bin
-  - copy: src=../runch/runch.sh dest={{ vzexec.path }}bin/runch mode=755
-  - command: "{{ vzexec.path }}/bin/runch start {{ vzexec.path }}bundles/{{ vzexec.image }}"
-PLAY
-	ansible-playbook tmp-start.yaml
+	echo '{ "vzexec" : {} }' | jshon -e vzexec -s "/home/$USER/.vzexec/" -i path -s "$image" -i image -p >tmp-start.json
+	ansible-playbook -e @tmp-start.json vzmaster-start.yaml
 }
 
 function cmd_kill
