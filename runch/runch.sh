@@ -23,9 +23,9 @@ function cmd_start
 	local gid=$($jshon -e process -e user -e gid)
 	local cwd=/ # temporary until cwd is supported by chroot
 	#cd $bundle$cwd
-	sudo /usr/sbin/chroot --userspec $uid:$gid $bundle/$root $args
+	sudo /usr/sbin/chroot --userspec $uid:$gid $bundle/$root $args &
 	local pid=$!
-	local id=$(basename bundle)
+	local id=$(basename $bundle)
 	local path=/run/opencontainer/chroots/$id
 	sudo install -o $UID -d $path
 	cat >$path/state.json <<-END

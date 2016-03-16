@@ -23,7 +23,7 @@ function cmd_start
 	local image=$1
 	if [ -z "$image" ]
 	then
-		echo "push: image cannot be empty" >&2
+		echo "start: image cannot be empty" >&2
 		exit -2
 	fi
 
@@ -31,7 +31,7 @@ function cmd_start
 	then
 		true
 	else
-		echo "images/$image.txz doesn't exist" >&2
+		echo "start: images/$image.txz doesn't exist" >&2
 		exit -1
 	fi
 cat >tmp-start.yaml <<PLAY
@@ -53,9 +53,27 @@ PLAY
 	ansible-playbook tmp-start.yaml
 }
 
+function cmd_kill
+{
+	local container_id=$1
+
+cat >tmp-kill.yaml <<PLAY
+---
+- hosts: all
+  vars:
+    vzexec:
+      path: /home/$USER/.vzexec/
+      container_id: $container_id
+  tasks:
+  - command: "{{ vzexec.path }}/bin/runch kill {{ vzexec.container_id }}"
+PLAY
+	ansible-playbook tmp-kill.yaml
+}
+
+
 set -ex
 case $1 in
-    push|start)
+    push|start|kill)
       cmd_$1 $2
       ;;
 	*)
