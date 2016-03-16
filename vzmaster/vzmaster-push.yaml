@@ -1,0 +1,4 @@
+---
+- hosts: all
+  tasks:
+  - copy: src="images/{{ vzexec.image }}.txz" dest="{{ vzexec.path }}/images/"

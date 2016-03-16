@@ -12,10 +12,11 @@ function cmd_push
 	then
 		true
 	else
-		echo "images/$image.txz doesn't exist" >&2
+		echo "push: images/$image.txz doesn't exist" >&2
 		exit
 	fi
-	ansible all -m copy -a "src=images/$image.txz dest=/home/$USER/.vzexec/images/"
+	echo '{ "vzexec" : {} }' | jshon -e vzexec -s "/home/$USER/.vzexec/" -i path -s "$image" -i image -p >tmp-push.json
+	ansible-playbook -e @tmp-push.json vzmaster-push.yaml
 }
 
 function cmd_start
