@@ -7,4 +7,5 @@
   - package: state=present name=jshon
   - file: state=directory path={{ vzexec.path }}bin
   - copy: src=../runch/runch.sh dest={{ vzexec.path }}bin/runch mode=755
-  - command: "{{ vzexec.path }}/bin/runch start {{ vzexec.path }}bundles/{{ vzexec.image }}"
+  - copy: src=forever.sh dest={{ vzexec.path }}bin/forever mode=755
+  - shell: "nohup {{ vzexec.path }}/bin/forever {{ vzexec.path }}/bin/runch start {{ vzexec.path }}bundles/{{ vzexec.image }} &"
