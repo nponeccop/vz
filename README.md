@@ -57,12 +57,12 @@ Status
 
 - `strace-trace` minimizes pre-existing rootfs
 - `vzmaster push` uploads images using Ansible
-- `vzmaster start` installs `runch` remotely, unpacks image and starts resuting OCI bundle using `ranch`
+- `vzmaster start` installs `runch` remotely, unpacks an image and starts the resulting OCI bundle using `runch`
+- `vzmaster kill` stops the bundle remotely by `runch kill`
 - `runch start` reads chroot configuration from OCI `config.json` and runs basic bundles. To be generally useful it needs to support:
   - auto-restart on crashes
   - mounting instructions from OCI `config.json` or at least `arch-chroot` default mounts
-- `runch kill` works
-- `vzmaster kill` is missing, but it is only an Ansible wrapper of `runch`
+- `runch kill` reads the PID from `/run/containers/chroot` and kills the process
 
 Why
 ---
