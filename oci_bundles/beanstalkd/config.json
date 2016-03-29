@@ -10,7 +10,7 @@
 			"gid": 1000
 		},
 		"args": [
-			"/usr/bin/beanstalkd"
+			"/usr/bin/beanstalkd", "-l", "127.0.0.1", "-V"
 		]
 		, "cwd" : "/"
 	},
