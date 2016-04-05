@@ -4,7 +4,7 @@ A distributed independent cloud capable of running "containers" on OpenVZ hosts.
 
 - cloud := an API to deploy applications and allocate resources across more than one VPS
 - distributed cloud := a cloud with VPS provided by more than one vendor
-- independed cloud := a cloud with command & control system not controlled by VPS vendors (talk less locked to a single vendor)
+- independent cloud := a cloud with command & control system not controlled by VPS vendors (talk less locked to a single vendor)
 - container := a partition of a VPS allowing multiple POSIX/libc applications to coexist without clashes of dependency versions
 
 Workflow of 0.1
