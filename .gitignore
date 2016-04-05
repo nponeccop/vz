@@ -3,4 +3,6 @@ ebin/
 .applist
 *.swp
 vzmaster/images/
+vzmaster/*.retry
+vzmaster/tmp-*.json
 oci_bundles/*/rootfs/
