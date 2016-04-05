@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+chroot_add_mount() {
+  sudo mount "$@" && CHROOT_ACTIVE_MOUNTS=("$2" "${CHROOT_ACTIVE_MOUNTS[@]}")
+}
+
 function cmd_start 
 {
 	set -e
@@ -35,7 +40,12 @@ function cmd_start
 	, "created" : "$(date -Is)"
 	}
 	END
-	exec sudo /usr/sbin/chroot --userspec $uid:$gid $bundle/$root $args
+	local newroot=$bundle/$root
+	# TODO parse config.json to enable the mounts
+	chroot_add_mount proc "$newroot/proc" -t proc -o nosuid,noexec,nodev || true
+	chroot_add_mount sys "$newroot/sys" -t sysfs -o nosuid,noexec,nodev,ro || true
+	chroot_add_mount udev "$newroot/dev" -t devtmpfs -o mode=0755,nosuid || true
+	exec sudo /usr/sbin/chroot --userspec $uid:$gid $newroot $args
 }
 
 function cmd_kill
