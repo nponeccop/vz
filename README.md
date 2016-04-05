@@ -1,11 +1,11 @@
 # vz [![Join the chat at https://gitter.im/nponeccop/vz](https://badges.gitter.im/nponeccop/vz.svg)](https://gitter.im/nponeccop/vz?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-A distributed private cloud capable of running "containers" on OpenVZ hosts.
+A distributed independent cloud capable of running "containers" on OpenVZ hosts.
 
 - cloud := an API to deploy applications and allocate resources across more than one VPS
 - distributed cloud := a cloud with VPS provided by more than one vendor
-- private cloud := a cloud with command & control system not controlled by VPS vendors (talk less by a single vendor)
-- container := a partition of a VPS allowing multiple POSIX/libc applications coexist without clashes of dependency versions
+- independed cloud := a cloud with command & control system not controlled by VPS vendors (talk less locked to a single vendor)
+- container := a partition of a VPS allowing multiple POSIX/libc applications to coexist without clashes of dependency versions
 
 Workflow of 0.1
 ---------------
@@ -57,12 +57,10 @@ Status
 
 - `strace-trace` minimizes pre-existing rootfs
 - `vzmaster push` uploads images using Ansible
-- `vzmaster start` installs `runch` remotely, unpacks an image and starts the resulting OCI bundle using `runch`
-- `vzmaster kill` stops the bundle remotely by `runch kill`
-- `runch start` reads chroot configuration from OCI `config.json` and runs basic bundles. To be generally useful it needs to support:
-  - auto-restart on crashes
-  - mounting instructions from OCI `config.json` or at least `arch-chroot` default mounts
-- `runch kill` reads the PID from `/run/containers/chroot` and kills the process
+- `vzmaster start` installs `runch` remotely, unpacks an image and starts the resulting OCI bundle using `forever runch` which restarts the container init process on crashes
+- `vzmaster kill` stops the bundle remotely by `runch kill` (but it's restarted by `forever`, so it's not very useful)
+- `runch start` reads chroot configuration from OCI `config.json` and runs bundles using `arch-chroot` default mounts
+- `runch kill` reads the PID from `/run/containers/chroot` and kills the process. But it turned out that it's not what we want.
 
 Why
 ---
