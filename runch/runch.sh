@@ -58,6 +58,30 @@ function cmd_start
 	exec sudo /usr/sbin/chroot --userspec $uid:$gid $newroot $args
 }
 
+function cmd_delete
+{
+	local id=$1
+	local path=/run/opencontainer/chroots/$id/state.json
+	if [ -z "$id" ]
+	then
+		echo "runch delete: id cannot be empty" >&2
+		exit
+	fi
+	if [ -f $path ]
+	then
+		true
+	else
+		echo "$id container doesn't exist" >&2
+		exit
+	fi
+
+	local bundle=$(jshon -F $path -e bundlePath -u)
+	local root=$(jshon -F $path -e config -e root -e path -u)
+	sudo umount $bundle/$root/{proc,sys,dev} || true
+	rm $path
+	sudo rmdir $(dirname $path)
+}
+
 function cmd_kill
 {
 	local id=$1
@@ -66,7 +90,7 @@ function cmd_kill
 
 set -e
 case $1 in
-    start|kill)
+    start|kill|delete)
       cmd_$1 $2
       ;;
 	"")
