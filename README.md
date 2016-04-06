@@ -62,7 +62,8 @@ Status
 - `vzmaster start` installs `runch` remotely, unpacks an image and starts the resulting OCI bundle using `forever runch` which restarts the container init process on crashes
 - `vzmaster kill` stops the bundle remotely by `runch kill` (but it's restarted by `forever`, so it's not very useful)
 - `runch start` reads chroot configuration from OCI `config.json` and runs bundles using `arch-chroot` default mounts
-- `runch kill` reads the PID from `/run/containers/chroot` and kills the process. But it turned out that it's not what we want.
+- `runch kill` reads the PID from `/run/containers/chroot`, kills the process, waits for it to terminate and runs `runch delete` to clean it all. But it turned out that it's not what we want.
+- `runch delete` unmounts the filesystems and deletes container state from `/run/containers/chroot`
 
 Why
 ---
