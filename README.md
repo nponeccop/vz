@@ -7,6 +7,8 @@ A distributed independent cloud capable of running "containers" on OpenVZ hosts.
 - independent cloud := a cloud with command & control system not controlled by VPS vendors (talk less locked to a single vendor)
 - container := a partition of a VPS allowing multiple POSIX/libc applications to coexist without clashes of dependency versions
 
+Distibuted means reliable, independent means free as in freedom, OpenVZ means more resouces for the same cost. 
+
 Workflow of 0.1
 ---------------
 
