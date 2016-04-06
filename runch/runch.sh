@@ -85,7 +85,31 @@ function cmd_delete
 function cmd_kill
 {
 	local id=$1
-	kill $(jshon </run/opencontainer/chroots/$id/state.json -e init_process_pid)
+	local path=/run/opencontainer/chroots/$id/state.json
+	if [ -z "$id" ]
+	then
+		echo "runch kill: id cannot be empty" >&2
+		exit
+	fi
+	if [ -f $path ]
+	then
+		true
+	else
+		echo "$id container doesn't exist (wrong id or already deleted)" >&2
+		exit
+	fi
+
+	local pid=$(jshon -F $path -e init_process_pid)
+	sudo /usr/bin/kill -s 0 $pid 2>/dev/null || (
+		echo "runch kill: ($pid) no such process (container $id is destroyed)" >&2
+		false
+	) || exit
+
+	sudo /usr/bin/kill $pid
+	echo waiting for $pid to exit
+	while [ -d /proc/$pid ] ; do sleep 1; done
+	echo process $pid exited
+	cmd_delete $id
 }
 
 set -e
