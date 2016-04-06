@@ -47,6 +47,7 @@ function cmd_start
 	, "init_process_pid" : $pid
 	, "id" : "$id"
 	, "created" : "$(date -Is)"
+	, "bundlePath" : "$(readlink -m $bundle)"
 	}
 	END
 	local newroot=$bundle/$root
