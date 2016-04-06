@@ -4,9 +4,18 @@ chroot_add_mount() {
   sudo mount "$@" && CHROOT_ACTIVE_MOUNTS=("$2" "${CHROOT_ACTIVE_MOUNTS[@]}")
 }
 
+parse() {
+	set +x
+	local bundle=$1
+	local default=$2
+	shift
+	shift
+	jshon -QF $bundle/config.json $* || echo $default
+}
+
 function cmd_start 
 {
-	set -e
+	set -ex
 	local bundle=$1
 	if [ -z "$bundle" ]
 	then
@@ -24,8 +33,8 @@ function cmd_start
 	local jshon="jshon -F $bundle/config.json"
 	local root=$($jshon -e root -e path -u)
 	local args=$($jshon -e process -e args -a -u | xargs)
-	local uid=$($jshon -e process -e user -e uid)
-	local gid=$($jshon -e process -e user -e gid)
+	local uid=$(parse $bundle 0 -e process -e user -e uid)
+	local gid=$(parse $bundle 0 -e process -e user -e gid)
 	local cwd=/ # temporary until cwd is supported by chroot
 	#cd $bundle$cwd
 
