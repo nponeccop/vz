@@ -1,4 +1,5 @@
 ---
 - hosts: all
   tasks:
-  - command: "{{ vzexec.path }}/bin/runch kill {{ vzexec.container_id }}"
+  - copy: src=kill.sh dest={{ vzexec.path }}/bin/kill mode=755
+  - command: "{{ vzexec.path }}/bin/kill {{ vzexec.container_id }}"
