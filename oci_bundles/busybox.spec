@@ -1,0 +1,16 @@
+/bin
+/dev
+/etc/resolv.conf
+/lib
+/mnt
+/opt
+/proc
+/run
+/sbin
+/srv
+/sys
+/tmp
+/usr/bin/busybox
+/usr/lib/ld-2.23.so
+/usr/lib/ld-linux.so.2
+/usr/sbin

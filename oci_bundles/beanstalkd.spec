@@ -1,0 +1,13 @@
+/dev
+/etc/gai.conf
+/etc/resolv.conf
+/lib
+/proc
+/run
+/sys
+/tmp
+/usr/bin/beanstalkd
+/usr/lib/ld-2.23.so
+/usr/lib/ld-linux.so.2
+/usr/lib/libc-2.23.so
+/usr/lib/libc.so.6
