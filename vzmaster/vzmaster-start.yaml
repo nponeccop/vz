@@ -1,10 +1,13 @@
 ---
 - hosts: all
   tasks:
+  - package: state=present name=jshon
+    become: yes
+  - package: state=present name=xz
+    become: yes
   - file: state=directory path={{ vzexec.path }}bundles/{{ vzexec.image }}
   - unarchive: copy=no src={{ vzexec.path }}images/{{ vzexec.image }}.txz dest={{ vzexec.path }}bundles/{{ vzexec.image }}
     become: yes
-  - package: state=present name=jshon
   - file: state=directory path={{ vzexec.path }}bin
   - copy: src=../runch/runch.sh dest={{ vzexec.path }}bin/runch mode=755
   - copy: src=forever.sh dest={{ vzexec.path }}bin/forever mode=755
