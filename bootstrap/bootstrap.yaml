@@ -6,7 +6,8 @@
       user: "{{ local_user.stdout }}"
   roles:
       - mivok0.sudo
-  tasks:
+  pre_tasks:
+      - package: state=present name=libselinux-python
       - name: get the username running the deploy
         local_action: command whoami
         register: local_user
