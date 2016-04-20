@@ -1,5 +1,6 @@
 ---
 - hosts: all
   tasks:
+  - file: state=directory path={{ vzexec.path }}bin
   - copy: src=kill.sh dest={{ vzexec.path }}/bin/kill mode=755
   - command: "{{ vzexec.path }}/bin/kill {{ vzexec.container_id }}"
