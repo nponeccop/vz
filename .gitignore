@@ -2,6 +2,8 @@ deps/
 ebin/
 .applist
 *.swp
+bootstrap/bootstrap.retry
+bootstrap/ssh.pub
 vzmaster/images/
 vzmaster/*.retry
 vzmaster/tmp-*.json
