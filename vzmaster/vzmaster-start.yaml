@@ -11,4 +11,5 @@
   - file: state=directory path={{ vzexec.path }}bin
   - copy: src=../runch/runch.sh dest={{ vzexec.path }}bin/runch mode=755
   - copy: src=forever.sh dest={{ vzexec.path }}bin/forever mode=755
+  - copy: src=vzexec.sh dest={{ vzexec.path }}bin/vzexec mode=755
   - shell: "nohup {{ vzexec.path }}/bin/forever {{ vzexec.path }}/bin/runch start {{ vzexec.path }}bundles/{{ vzexec.image }} &"
