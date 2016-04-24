@@ -1,0 +1,95 @@
+{
+	"ociVersion": "0.3.0",
+	"platform": {
+		"os": "linux",
+		"arch": "386"
+	},
+	"process": {
+		"user": {
+			"uid": 1002,
+			"gid": 1002
+		},
+		"args": [
+			"/usr/bin/gearmand", "-L", "127.0.0.1"
+		]
+		, "cwd" : "/"
+	},
+	"root": {
+		"path": "rootfs"
+	},
+	"mounts": [
+		{
+			"destination": "/proc",
+			"type": "proc",
+			"source": "proc"
+		},
+		{
+			"destination": "/dev",
+			"type": "tmpfs",
+			"source": "tmpfs",
+			"options": [
+				"nosuid",
+				"strictatime",
+				"mode=755",
+				"size=65536k"
+			]
+		},
+		{
+			"destination": "/dev/pts",
+			"type": "devpts",
+			"source": "devpts",
+			"options": [
+				"nosuid",
+				"noexec",
+				"newinstance",
+				"ptmxmode=0666",
+				"mode=0620",
+				"gid=5"
+			]
+		},
+		{
+			"destination": "/dev/shm",
+			"type": "tmpfs",
+			"source": "shm",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev",
+				"mode=1777",
+				"size=65536k"
+			]
+		},
+		{
+			"destination": "/dev/mqueue",
+			"type": "mqueue",
+			"source": "mqueue",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev"
+			]
+		},
+		{
+			"destination": "/sys",
+			"type": "sysfs",
+			"source": "sysfs",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev"
+			]
+		},
+		{
+			"destination": "/sys/fs/cgroup",
+			"type": "cgroup",
+			"source": "cgroup",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev",
+				"relatime",
+				"ro"
+			]
+		}
+	]
+}
