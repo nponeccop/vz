@@ -2,7 +2,9 @@
 
 if [ -f "$1/config.json" ]
 then
-	sudo tar --numeric-owner -cJvf $(basename $1).txz -C $1 .
+	txz=$(basename $1).txz
+	sudo tar --numeric-owner -cJvf $txz -C $1 .
+	mv $txz $(basename $1)-$(sha256sum $txz | cut -c 1-4).txz
 else
 	echo >&2 Usage: foo {bundle-path}
 fi
