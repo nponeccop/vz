@@ -12,7 +12,7 @@ function cmd_update
 	rmdir $1
 	./from-bundle.sh ../../oci_bundles/$1
 	local image=$1-*.txz
-	if [-f ../../vzbuild/images/$image ]
+	if [ -f ../../vzbuild/images/$image ]
 	then
 		echo $image already exists
 		rm $image
