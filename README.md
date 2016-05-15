@@ -50,7 +50,7 @@ Bootstrap on CentOS 6 i686
 - `./bootstrap.sh {server-ip} -k` (`-k` means ask for password. You can omit `-k` once the key is installed for root)
 - `ssh {server-ip}` - now it should let you in with your key
 - `sudo yum update`
-- `sudo yum install http://dl.fedoraproject.org/pub/epel/6/i386/epel-release-6-8.noarch.rpm`
+- `sudo yum install epel-release`
 - `sudo yum install ftp://ftp.pbone.net/mirror/ftp5.gwdg.de/pub/opensuse/repositories/home:/dmuhamedagic/Fedora_18/i686/jshon-20121122-3.1.i686.rpm`
 - add the IP to your Ansible inventory
 
