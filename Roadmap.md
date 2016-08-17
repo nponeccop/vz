@@ -26,12 +26,6 @@ be discovered, imaged and shut down by confiscation orders to respective provide
 Note that this is essentially just strenghtening of the Damage Localization principle. It is not purely anti-government feature
 which many may regard as shady, but also serves damage localization for mainstream pro-government security-savvy enterprise users.
 
-## WAN cluster
-
-All the management software on the market is designed for contention and latency-free datacenters and fails miserably when
-failover consensus protocols or even message queues are run over WAN. And these days WAN distribution is essential for disaster
-recovery and high availability. Think of a web site running in different Amazon datacenters, or availability zones in their parlance.
-
 ## Enterprise Cluster
 
 ### Stability over Cutting Edge
@@ -43,4 +37,19 @@ RHEL flavours. This prevents them from using modern technologies such as Docker 
 
 ### Wide-scale Automated Management
 
+### Legacy, RedHat, Microsoft-friendly
+
+### High Chances of Acquisition
+
+## Universal Lightweight Cluster
+
+### Lightweight Management
+
+### Weak Containers for LTS Versions of Linux
+
+## WAN cluster
+
+All the management software on the market is designed for contention and latency-free datacenters and fails miserably when
+failover consensus protocols or even message queues are run over WAN. And these days WAN distribution is essential for disaster
+recovery and high availability. Think of a web site running in different Amazon datacenters, or availability zones in their parlance.
 
