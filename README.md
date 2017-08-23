@@ -115,10 +115,12 @@ Rootfs:
 - Ubuntu Snap
 - RedHat Atomic
 - Alpine Linux
+- Intel Clear Linux
 
 Container runners:
 - docker/runc
 - garden/warden
+- Intel Clear Containers
 
 Command and control:
 - fleet/etcd
