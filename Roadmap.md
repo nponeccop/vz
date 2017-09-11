@@ -31,15 +31,23 @@ which many may regard as shady, but also serves damage localization for mainstre
 ### Stability over Cutting Edge
 
 For enterprises stability is important, so they run software commonly considered outdated, such as CentOS 6 and even 5, and their
-RHEL flavours. This prevents them from using modern technologies such as Docker and other LXC-based containers.
+RHEL flavours. This generally prevents them from using modern technologies such as Docker and other LXC-based containers, but once stable and widely approved, features get backported.
 
 ### Fixed Dictated Platforms
 
+We can't force an enterprise to change the platform it has been running. For example, we can't invent our own distribution of Linux, or can't drop support for hypervisors and architectures considered exotic by the open-source community, such as 32-bit systems, VMware ESXi, Citrix XenServer, Microsoft Hyper-V.
+
 ### Wide-scale Automated Management
+
+Enterpises typically deploy some form of automated management (e.g. configuration management). So we can't just drop their solution and invent our own management framework, but must piggyback on what they have. 
 
 ### Legacy, RedHat, Microsoft-friendly
 
+They may go as far (in the eyes of Linux/GNU fanboys) as using Microsoft OMI to control their RHEL installations from Microsoft SysCenter. OpenPegasus mentions OpenVMS (a non-UNIX OS) in the list of supported systems etc. 
+
 ### High Chances of Acquisition
+
+In the long run we want to become a part of central management portfolio of an enterprise vendor such as HPE, Oracle or RedHat.
 
 ## Universal Lightweight Cluster
 
