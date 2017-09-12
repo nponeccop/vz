@@ -105,7 +105,6 @@ Architecture
 - image push over SFTP (not pull over HTTPS, so no image registry)
 - flat images without layers in 1.0 (i.e. simple tarballs of OCI bundles)
 
-
 Competitors
 -----------
 Rootfs:
@@ -133,8 +132,8 @@ Supervision:
 - openrc
 - raw busybox-based /sbin/init
 
-Goals for 0.1
--------------
+Features as of 0.1
+------------------
 
 - Manual installation (with help from `bootstrap`)
 - PoC operation on CentOS 6/OpenVZ with manually created images (with help from `strace-chroot` to create the `rootfs` part)
@@ -149,7 +148,25 @@ Master-slave:
 
 Slave only:
 
-- container runner with integrated container crash supervision and auto restart
+- `vzexec` container runner with integrated container crash supervision and auto restart
+- stdout/strderr are logged to syslog
+
+Goals for 0.2
+-------------
+
+- more automation in `bootstrap`
+- shift some work from start/stop Ansible playbooks to `bootstrap` to avoid repetition
+- deploy to Ansible host groups other than `all`
+- seamless update - autostop older image
+- register rc.d services for container autostart
+- `iptables` setup to open ports
+
+Goals for 0.3
+-------------
+
+- differential image compression using `xdelta3` or `bsdiff`
+- Ansible role
+- Syslog downloader
 
 Goals for 1.0
 -------------
@@ -171,7 +188,6 @@ Goals for 2.0
 Master-slave:
 
 - logging and monitoring
-- differential image compression
  
 Slave only:
 
