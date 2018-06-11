@@ -17,7 +17,7 @@ exports.check = function (fname)
 	{
 		return null
 	}
-	var b = new Buffer(1024)
+	var b = Buffer.alloc(1024)
 	b[0] = 0
 	fs.readSync(h, b, 0, b.length)
 	fs.closeSync(h)
