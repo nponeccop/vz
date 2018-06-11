@@ -6,6 +6,7 @@
       user: "{{ local_user.stdout }}"
   roles:
       - mivok0.sudo
+      - geerlingguy.repo-epel
   pre_tasks:
       - package: state=present name=libselinux-python
       - name: get the username running the deploy
