@@ -1,72 +1,84 @@
+const fs = require('fs')
 const grammar = require('./grammar')
 
-const parse2 = grammar.parse2
-let unfinished = {}
+exports.parseFileSync = fileName => exports.parseArray(
+	fs
+		.readFileSync(fileName, 'utf8')
+		.split('\n')
+		.filter(x => x != '')
+)
 
-const f = require('fs').readFileSync(process.argv[2], 'utf8').split('\n')
-f.filter(x => x != '').map(x => {
-	const [pid, o] = grammar.parse(x)
-	const suspend = (co) =>
-	{
-		const [kk] = Object.keys(co)
-		if (kk == 'unfinished')
+exports.parseArray = lineArray => {
+
+	const unfinished = {}
+
+	const mapFn = (x) => {
+		const [pid, o] = grammar.parse(x)
+		const suspend = (co) =>
 		{
-			if (pid in unfinished)
+			const [kk] = Object.keys(co)
+			if (kk == 'unfinished')
 			{
-				throw new Error("double unfinished!")
+				if (pid in unfinished)
+				{
+					throw new Error("double unfinished!")
+				}
+				unfinished[pid] = o
+				return true
 			}
-			unfinished[pid] = o
-			return true
-		}
-		else
-		{
-			return false
-		}
-	}
-
-	const [k] = Object.keys(o)
-	const v = o[k]
-
-	switch (k)
-	{
-	case 'execve':
-		const [path, co] = v
-		suspend(co)
-		break;
-	case 'openat':
-		{
-			const co = v[5]
-			if (suspend(co))
+			else
 			{
-				return null
+				return false
 			}
 		}
-	case 'exit':
-	case 'signal':
-		break;
-	case 'resumed':
-		const [call, ret] = v
 
-		if (('unfinished' in ret)) {
-			throw new Error('unfinished resume!')
-		}
-		const oo = unfinished[pid]
-//		console.log(oo)
-		const [kkk] = Object.keys(oo)
-		switch (kkk) {
+		const [k] = Object.keys(o)
+		const v = o[k]
+
+		switch (k)
+		{
 		case 'execve':
-			oo.execve[1] = ret
-			return [pid, oo]
+			const [path, co] = v
+			suspend(co)
+			break;
 		case 'openat':
-			oo.openat[5] = ret
-			return [pid, oo]
+			{
+				const co = v[5]
+				if (suspend(co))
+				{
+					return null
+				}
+			}
+		case 'exit':
+		case 'signal':
+			break;
+		case 'resumed':
+			const [call, ret] = v
+
+			if (('unfinished' in ret)) {
+				throw new Error('unfinished resume!')
+			}
+			const oo = unfinished[pid]
+	//		console.log(oo)
+			const [kkk] = Object.keys(oo)
+			switch (kkk) {
+			case 'execve':
+				oo.execve[1] = ret
+				return [pid, oo]
+			case 'openat':
+				oo.openat[5] = ret
+				return [pid, oo]
+			}
+
+			break;
+		default:
+			console.log(o)
+			process.exit()
 		}
-
-		break;
-	default:
-		console.log(o)
-		process.exit()
+		return [pid, o]
 	}
-	return [pid, o]
-}).filter(x => x != null).forEach(x => console.log(x))
 
+	return lineArray
+	.map(mapFn)
+	.filter(x => x != null)
+}
