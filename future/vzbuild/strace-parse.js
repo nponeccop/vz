@@ -17,18 +17,21 @@ const retVal = p.any
 	( p.tag("ret", nat)
 	, p.tag("err", proj([0,2,4], p.all(neg, p.ws, p.word, p.ws, p.re(/\(.*?\)/))))
 	)
-const openat = proj([2, 5, 8, 9, 10, 11], p.all(p.word, p.string('('), p.word, p.string(','), p.ws, cstring, p.string(','), p.ws, p.word,p.optional(p.many(p.all(p.string('|'),p.word))), p.optional(mode), 
-	p.any
-		( p.tag("complete", proj([4], p.all(p.string(')'), p.ws, p.string('='), p.ws, retVal)))
-		, p.tag("unfinished", ignore(p.string(' <unfinished ...>')))
-		)
-))
+const completion = p.any
+	( p.tag("complete", proj([4], p.all(p.string(')'), p.ws, p.string('='), p.ws, retVal)))
+	, p.tag("unfinished", ignore(p.string(' <unfinished ...>')))
+	)
+const openat = proj([2, 5, 8, 9, 10, 11], p.all(p.string('openat'), p.string('('), p.word, p.string(','), p.ws, cstring, p.string(','), p.ws, p.word,p.optional(p.many(p.all(p.string('|'),p.word))), p.optional(mode), completion))
 
-const parse = proj([0, 2], p.all(
+const execve = proj([1, 3], p.all(p.string("execve("), cstring, re(/.*? vars \*\//), completion))
+
+const parse2 = proj([0, 2], p.all(
 	nat,
 	p.ws, 
 	p.any
 		( p.tag('openat', openat)
+		, p.tag('execve', execve)
+		, p.tag('signal', ignore(re(/^--- SIG\w+ {.*} ---$/)))
 		, p.tag('exit', ignore(p.string('+++ exited with 0 +++')))
 		, p.tag('resumed', proj([1, 3], p.all
 			( p.string('<... ')
@@ -38,14 +41,16 @@ const parse = proj([0, 2], p.all(
 		)
 ))
 
-console.log(f[775])
-console.log(parse(f[775]).value[1])
+const parse = p.grammar(parse2)
 
-if (true)
+const idx = 318
+console.log(f[idx])
+const r = parse2(f[idx])
+console.log(r == null ? r : r.rest == '' ? r.value[1] : { value: r.value[1].execve, rest: r.rest})
+if (false)
 {
-
 	f.forEach((x, idx) => {
-		const res = parse(x)
+		const res = parse2(x)
 		if (res == null)
 		{
 			console.log(idx)
@@ -55,10 +60,10 @@ if (true)
 		}
 	})
 }
-tap.plan(9)
+tap.plan(13)
 tap.matchSnapshot
 	( parse('13954 openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3')
-	, '001'
+	, '001 - 2 flags'
 	)
 
 tap.matchSnapshot
@@ -72,7 +77,7 @@ tap.matchSnapshot
 	)
 
 tap.matchSnapshot
-	( parse('13955 +++ exited with 0 +++13955 +++ exited with 0 +++')
+	( parse('13955 +++ exited with 0 +++')
 	, '004 - exit'
 	)
 
@@ -96,18 +101,26 @@ tap.matchSnapshot
 	, '008 - unfinished'
 	)
 
+tap.matchSnapshot
+	( parse('14005 <... openat resumed> )            = 11')
+	, '009 - resumed'
+	)
+
+tap.matchSnapshot
+	( parse('13954 execve("/usr/bin/setarch", ["setarch", "i686", "pacstrap", "-dc", "newroot", "pacman", "archlinux32-keyring"], 0xbf9e18bc /* 14 vars */) = 0')
+	, '010 - execve'
+	)
+
+tap.matchSnapshot
+	( parse('13977 execve("/usr/bin/gpgsm", ["/usr/bin/gpgsm", "--version"], 0x1083be0 /* 18 vars */ <unfinished ...>')
+	, '011 - execve unfinished'
+	)
+
+tap.matchSnapshot
+	( parse('13966 --- SIGPIPE {si_signo=SIGPIPE, si_code=SI_USER, si_pid=13966, si_uid=0} ---')
+	, '012 - signal'
+	)
+
 tap.pass("should reach end of file")
-/*
- 
-console.log(f.filter(x => x != '').map((x) => {
-	const xx = x.match(pid)
-	if (!xx)
-	{
-		console.log(x)
-		process.exit(-1)
-	}
-	console.log(xx.input.slice(xx[0].length))
-	process.exit()
-	return xx ? xx.slice(1,10) : xx
-}))
-*/
+
+
