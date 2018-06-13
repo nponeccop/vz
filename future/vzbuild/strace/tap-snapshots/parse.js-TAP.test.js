@@ -5,7 +5,7 @@
  * Make sure to inspect the output below.  Do not ignore changes!
  */
 'use strict'
-exports[`strace-parse.js TAP > 001 - 2 flags 1`] = `
+exports[`parse.js TAP > 001 - 2 flags 1`] = `
 [ '13954',
   { openat: 
      [ 'AT_FDCWD',
@@ -16,7 +16,7 @@ exports[`strace-parse.js TAP > 001 - 2 flags 1`] = `
        { complete: { ret: '3' } } ] } ]
 `
 
-exports[`strace-parse.js TAP > 002 - 3 flags 1`] = `
+exports[`parse.js TAP > 002 - 3 flags 1`] = `
 [ '14802',
   { openat: 
      [ 'AT_FDCWD',
@@ -27,7 +27,7 @@ exports[`strace-parse.js TAP > 002 - 3 flags 1`] = `
        { complete: { ret: '3' } } ] } ]
 `
 
-exports[`strace-parse.js TAP > 003 - ENOENT 1`] = `
+exports[`parse.js TAP > 003 - ENOENT 1`] = `
 [ '13954',
   { openat: 
      [ 'AT_FDCWD',
@@ -38,11 +38,11 @@ exports[`strace-parse.js TAP > 003 - ENOENT 1`] = `
        { complete: { err: [ '-1', 'ENOENT', '(No such file or directory)' ] } } ] } ]
 `
 
-exports[`strace-parse.js TAP > 004 - exit 1`] = `
+exports[`parse.js TAP > 004 - exit 1`] = `
 [ '13955', { exit: null } ]
 `
 
-exports[`strace-parse.js TAP > 005 - 1 flag 1`] = `
+exports[`parse.js TAP > 005 - 1 flag 1`] = `
 [ '13954',
   { openat: 
      [ 'AT_FDCWD',
@@ -53,7 +53,7 @@ exports[`strace-parse.js TAP > 005 - 1 flag 1`] = `
        { complete: { err: [ '-1', 'ENOENT', '(No such file or directory)' ] } } ] } ]
 `
 
-exports[`strace-parse.js TAP > 006 - mode 1`] = `
+exports[`parse.js TAP > 006 - mode 1`] = `
 [ '13954',
   { openat: 
      [ 'AT_FDCWD',
@@ -66,7 +66,7 @@ exports[`strace-parse.js TAP > 006 - mode 1`] = `
        { complete: { ret: '3' } } ] } ]
 `
 
-exports[`strace-parse.js TAP > 007 - 000 mode 1`] = `
+exports[`parse.js TAP > 007 - 000 mode 1`] = `
 [ '13966',
   { openat: 
      [ 'AT_FDCWD',
@@ -80,7 +80,7 @@ exports[`strace-parse.js TAP > 007 - 000 mode 1`] = `
        { complete: { ret: '4' } } ] } ]
 `
 
-exports[`strace-parse.js TAP > 008 - unfinished 1`] = `
+exports[`parse.js TAP > 008 - unfinished 1`] = `
 [ '14005',
   { openat: 
      [ 'AT_FDCWD',
@@ -91,20 +91,20 @@ exports[`strace-parse.js TAP > 008 - unfinished 1`] = `
        { unfinished: null } ] } ]
 `
 
-exports[`strace-parse.js TAP > 009 - resumed 1`] = `
+exports[`parse.js TAP > 009 - resumed 1`] = `
 [ '14005', { resumed: [ 'openat', { ret: '11' } ] } ]
 `
 
-exports[`strace-parse.js TAP > 010 - execve 1`] = `
+exports[`parse.js TAP > 010 - execve 1`] = `
 [ '13954',
   { execve: [ '"/usr/bin/setarch"', { complete: { ret: '0' } } ] } ]
 `
 
-exports[`strace-parse.js TAP > 011 - execve unfinished 1`] = `
+exports[`parse.js TAP > 011 - execve unfinished 1`] = `
 [ '13977',
   { execve: [ '"/usr/bin/gpgsm"', { unfinished: null } ] } ]
 `
 
-exports[`strace-parse.js TAP > 012 - signal 1`] = `
+exports[`parse.js TAP > 012 - signal 1`] = `
 [ '13966', { signal: null } ]
 `
