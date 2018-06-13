@@ -63,10 +63,10 @@ exports.parseArray = lineArray => {
 			const [kkk] = Object.keys(oo)
 			switch (kkk) {
 			case 'execve':
-				oo.execve[1] = ret
+				oo.execve[1] = { 'complete' : ret }
 				return [pid, oo]
 			case 'openat':
-				oo.openat[5] = ret
+				oo.openat[5] = { 'complete' : ret }
 				return [pid, oo]
 			}
 
