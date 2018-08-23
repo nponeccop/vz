@@ -57,6 +57,7 @@ Bootstrap on CentOS 6 i686
 Status
 ------
 
+- it have been used in production since 2017
 - `strace-trace` minimizes pre-existing rootfs
 - `vzmaster push` uploads images using Ansible
 - `vzmaster start` installs `runch` remotely, unpacks an image and starts the resulting OCI bundle using `forever runch` which restarts the container init process on crashes
@@ -105,6 +106,11 @@ Architecture
 - image push over SFTP (not pull over HTTPS, so no image registry)
 - flat images without layers in 1.0 (i.e. simple tarballs of OCI bundles)
 
+Non-goals
+---------
+
+- unprivileged containers is not a requirement
+
 Competitors
 -----------
 Rootfs:
@@ -120,6 +126,7 @@ Container runners:
 - docker/runc
 - garden/warden
 - Intel Clear Containers
+- udocker/proot
 
 Command and control:
 - fleet/etcd
@@ -127,10 +134,19 @@ Command and control:
 - Heroku
 - Dokku
 
-Supervision:
+Supervision/zombie reaping:
 - systemd
 - openrc
 - raw busybox-based /sbin/init
+- supervisord
+- pidunu
+
+Image building:
+
+- Dockerfile/Docker build/buildkit
+- smith
+- s2i
+- Heroku
 
 Features as of 0.1
 ------------------
@@ -270,10 +286,10 @@ Linux Distributions for OpenVZ
 | Distribution        | EOL     | Init   | Kernel              |
 |---------------------|---------|--------|---------------------|
 | CentOS 6            | 2020.12 | SysV   | 2.6.32-042stab075.2 |
+| CentOS 6            | 2020.12 | SysV   | 2.6.32-042stab123.3 |
 | Ubuntu 14.04 LTS    | 2019.09 | SysV   | 2.6.32-042stab075.2 |
-| Debian 7 Wheezy LTS | 2018.06 | SysV   | 2.6.32-042stab075.2 |
 
 File an issue or PR if:
 - your VPS has another distribution or kernel
-- that distribution is fully supported until at least 2017.03 (CentOS 5 is not)
+- that distribution is fully supported until at least 2019.01 (CentOS 5 is not)
 - the combination actually works and is not merely advertised as available
