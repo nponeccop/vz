@@ -1,0 +1,3 @@
+[submodule "archlinux-microcontainers"]
+	path = archlinux-microcontainers
+	url = https://github.com/nponeccop/archlinux-microcontainers.git
