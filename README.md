@@ -1,77 +1,56 @@
 # vz [![Join the chat at https://gitter.im/nponeccop/vz](https://badges.gitter.im/nponeccop/vz.svg)](https://gitter.im/nponeccop/vz?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-A distributed independent cloud capable of running "containers" on OpenVZ hosts.
+A distributed independent cloud capable of running Podman pods on low RAM hosts.
 
 - cloud := an API to deploy applications and allocate resources across more than one VPS
 - distributed cloud := a cloud with VPS provided by more than one vendor
 - independent cloud := a cloud with command & control system not controlled by VPS vendors (talk less locked to a single vendor)
-- container := a partition of a VPS allowing multiple POSIX/libc applications to coexist without clashes of dependency versions
 
-Distibuted means reliable, independent means free as in freedom, OpenVZ means more resouces for the same cost. 
+Distibuted means reliable, independent means free as in freedom, low RAM means cheaper as the VPS cost is dominated by the RAM amount.
 
-Workflow of 0.1
+Workflow of 2.x
 ---------------
 
-Prepare a `rootfs` with your application:
+Prepare the pods:
 
-  - Export and untar from Docker
-  - or `debootstrap`, `febootstrap`, `pacstrap` and similar
-  - or `strace-chroot`
+  - Build your containers as usual
+  - Use `smith-strace` to minify them (optional) 
+  - Define a pod in YAML
 
-Prepare a standard OCI bundle:
-
-  - `mkdir -p bundles/myapp`
-  - Move `rootfs` to `bundles/myapp/rootfs`, so you have `bundles/myapp/rootfs/usr/bin/..`
-  - Create `bundles/myapp/config.json` according to the Open Containers Initiative specification
-  - Test the bundle (OCI term for rootfs+config) using `runch start myname` / `runch kill myname` (`runch` uses the basename as the OCI container id, so it shouldn't be '.')
-
-Prepare an image:
-
-  - `mkdir images`
-  - `sudo tar --numeric-owner xJvf images/myapp.txz -C bundles/myapp .`. Verify that `tar` says `./rootfs/usr/bin/..`
-
-Configure slaves:
+Configure the nodes:
 
   - Create a user with your current user name and passwordless `sudo` on the hosts
-  - Make sure Python 2.x is installed
 
 Configure the master
 
   - Configure Ansible and your hosts so `ansible all -m ping` is all green
+  - Generate an ansible playbook from the Ansible inventory and the pod files
 
-Enjoy `vzmaster push appname && vzmaster start appname`
+Enjoy `ansible-playbook -i hosts.ini deploy.yaml`
 
-Bootstrap on CentOS 6 i686
---------------------------
+Bootstrap on RockyLinux 8
+-------------------------
 
-- put your SSH public key to `bootstrap/ssh.pub` 
-- `cd bootstrap`
+AlmaLinux 8 and RHEL 8 should work too.
+
+- have your SSH public key listed in `ssh-add -l`
 - `ssh-copy-id root@{server-ip}`
 - `./bootstrap.sh {server-ip}`
 - `ssh {server-ip}` - now it should let you in with your key (note no `root@` - the previous step created the same remote user as  `whoami`!)
-- `sudo yum update`
-- `sudo yum install epel-release`
-- `sudo yum install ftp://ftp.pbone.net/mirror/ftp5.gwdg.de/pub/opensuse/repositories/home:/dmuhamedagic/Fedora_18/i686/jshon-20121122-3.1.i686.rpm`
-- add the IP to your Ansible inventory
+- `sudo yum update --security`
 
 Status
 ------
 
-- it have been used in production since 2017
-- `strace-trace` minimizes pre-existing rootfs
-- `vzmaster push` uploads images using Ansible
-- `vzmaster start` installs `runch` remotely, unpacks an image and starts the resulting OCI bundle using `forever runch` which restarts the container init process on crashes
-- `vzmaster kill` stops the bundle remotely by `runch kill` (but it's restarted by `forever`, so it's not very useful)
-- `runch start` reads chroot configuration from OCI `config.json` and runs bundles using `arch-chroot` default mounts
-- `runch kill` reads the PID from `/run/containers/chroot`, kills the process, waits for it to terminate and runs `runch delete` to clean it all. But it turned out that it's not what we want.
-- `runch delete` unmounts the filesystems and deletes container state from `/run/containers/chroot`
+- Slowly migrating the production from 1.x
+- `smith-strace` script work
+- Image push over SSH works
+- Handcrafted playbooks work, but they are not robust enough yet (mostly performance, idempotency and image upgrades are missing)
 
 Why
 ---
 
-The weak definition of containers allows for such weak forms of isolation as chroots or even NIX-style isolation. So unlike
-cgroups/namespaces/LXC-based containers (runc, docker, rkt..) it's possible to run multiple containers inside OpenVZ containers 
-with older kernels. It has an advantage of very low cost (e.g. twice as cheaper as KVM/Xen, e.g. BudgetVM vs DigitalOcean). And with such low operation cost even a hobbyist can afford operating a complex multi-server web service for years. And I hope that such improved longevity of hobbyist projects will bring more innovations to the web, as entry cost is at least twice as lower.
+with such low operation cost even a hobbyist can afford operating a complex multi-server web service for years. And I hope that such improved longevity of hobbyist projects will bring more innovations to the web, as entry cost is at least twice as lower.
 
 One problem of using cheaper VPS providers is that many of them die each year. So some provisions for redundancy must be made,
 as a VPS can just disappear along with its hosting company without any notice.
@@ -98,18 +77,14 @@ Architecture
 - all security is provided by OpenSSH and not by inmature TLS server implementations
 - all management is peformed by `ansible`. No management or data collection daemon processes whatsoever on slaves besides `init` and `sshd`.
 - ideally all containers are directly supervised by `init`/`PID 0` in the spirit of `/etc/inittab`
-- 32-bit `i686` as the main target architecture to save RAM. RAM is what is paid for. More RAM means more money, and saving 200 MB of RAM gives significant advantages on 512MB VPS. Fat runtimes for fat containers already exist.
-- `vzmaster` works as a frontend to `ansible`
-- `vzslave` works as a shell or an SSH subsystem
-- `runch` implements an open Open Containers Initiative (OCI) specification, along with Docker/libcontainer `runc` and VM `runv`
-- ideally no interactive shell whatsoever, except for emergencies
-- image push over SFTP (not pull over HTTPS, so no image registry)
-- flat images without layers in 1.0 (i.e. simple tarballs of OCI bundles)
+- 512 MB nodes. More RAM means more money. Fat runtimes for fat containers already exist.
+- Stock RHEL8 software via free downstream distributions (RockyLinux 8 is the primary target, AlmaLinux 8 works)
+- image push over SFTP via Ansible `copy` (not pull over HTTPS, so no image registry)
 
 Non-goals
 ---------
 
-- unprivileged containers is not a requirement
+- It's not a full k8s replacement
 
 Competitors
 -----------
@@ -148,11 +123,11 @@ Image building:
 - s2i
 - Heroku
 
-Features as of 0.1
-------------------
+Features as of 1.0-pre
+----------------------
 
 - Manual installation (with help from `bootstrap`)
-- PoC operation on CentOS 6/OpenVZ with manually created images (with help from `strace-chroot` to create the `rootfs` part)
+- PoC operation on RockyLinux 8 and AlmaLinux 8 CentOS 6/OpenVZ with manually created images (with help from `strace-chroot` to create the `rootfs` part)
 - `vzmaster {push|start|kill}` as a front end to Ansible
 - `runch {start|kill}`
 - `runch start` monitors using a shell loop
@@ -216,40 +191,6 @@ Master only:
 Available Components
 --------------------
 
-### runch
-
-A clone of `runc` but for chroots. Start, kill.
-
-### vzmaster
-
-A front-end to Ansible. Push, start, kill.
-
-### ldd-trace
-
-For executables that are known to rely only on dynamic libraries, `ldd-trace` provides a way to create minimal chroots:
-
-```shell
-  $ ldd-trace ls-chroot ls
-  $ ./ldd-chroot.sh ls-chroot ls
-  ++ mkdir -p ls-chroot/usr/lib
-  + cp -a /usr/lib/libcap.so.2.25 ls-chroot/usr/lib/libcap.so.2
-  + cp -a /usr/lib/libc-2.23.so ls-chroot/usr/lib/libc.so.6
-  ++ mkdir -p ls-chroot/lib
-  + cp -a /usr/lib/ld-2.23.so ls-chroot/lib/ld-linux.so.2
-  ++ mkdir -p ls-chroot/usr/bin
-  + cp -a /usr/bin/ls ls-chroot/usr/bin/ls
-  $ sudo chroot ls-chroot ls
-  dev  etc  lib  proc  run  sys  tmp  usr
-  $ find ls-chroot -type f
-  ls-chroot/usr/lib/libcap.so.2
-  ls-chroot/usr/lib/libc.so.6
-  ls-chroot/usr/bin/ls
-  ls-chroot/lib/ld-linux.so.2
-  ls-chroot/etc/resolv.conf
-  $ du -sBK ls-chroot/
-  2312K   ls-chroot/
-```
-
 ### strace-trace
 
 For more complex cases, `strace-trace` uses `strace` Linux only tool to trace system calls and find all files opened during the test run:
@@ -280,16 +221,3 @@ For more complex cases, `strace-trace` uses `strace` Linux only tool to trace sy
 
 The `spec` file created in current directory can be used to create a minimal OCI rootfs/chroot 
 
-Linux Distributions for OpenVZ
-------------------------------
-
-| Distribution        | EOL     | Init   | Kernel              |
-|---------------------|---------|--------|---------------------|
-| CentOS 6            | 2020.12 | SysV   | 2.6.32-042stab075.2 |
-| CentOS 6            | 2020.12 | SysV   | 2.6.32-042stab123.3 |
-| Ubuntu 14.04 LTS    | 2019.09 | SysV   | 2.6.32-042stab075.2 |
-
-File an issue or PR if:
-- your VPS has another distribution or kernel
-- that distribution is fully supported until at least 2019.01 (CentOS 5 is not)
-- the combination actually works and is not merely advertised as available
