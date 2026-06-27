@@ -22,3 +22,10 @@ oci_bundles/vztest/
 # vzbuild strace parser deps/cache
 future/vzbuild/strace/node_modules/
 future/vzbuild/strace/.tap/
+
+# vzbuild local build artifacts
+future/vzbuild/*.trace
+future/vzbuild/*.parsed
+future/vzbuild/*.spec
+future/vzbuild/strace.log
+oci_bundles/myapp/

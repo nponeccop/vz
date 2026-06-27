@@ -15,7 +15,7 @@ function grep_nosys {
 node $DIR/dir-links.js <(
 	(
 	cat $IN
-	find -L /lib -maxdepth 1 -name 'libnss_files.so*' -or -name 'libnss_dns.so*' -or -name 'ld-linux.so*' -or -name 'libresolv.so*'
+	find -L /lib /lib64 -maxdepth 1 \( -name 'libnss_files.so*' -o -name 'libnss_dns.so*' -o -name 'ld-linux*.so*' -o -name 'ld-musl-*.so*' -o -name 'libresolv.so*' \) 2>/dev/null
 	find -L /etc -maxdepth 1 -name 'hosts'
 	) | grep_nosys
 ) $ROOT | grep_nosys
