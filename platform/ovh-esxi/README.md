@@ -121,13 +121,34 @@ Fixed and verified on Rocky 9 (green + idempotent — 2nd run `changed=0`):
 an image `.txz` on the node (`vzmaster-push.yaml` now creates its image-store dir first;
 `vzmaster/ansible.cfg` added). All three steps are green and idempotent.
 
-### Layer 3 — podman ops under `vzmaster`
+### Layer 3 — container ops under `vzmaster`  ✅ start/kill working (chroot runtime)
 **ESXi-agnostic. The actual end the real project migrates onto.**
 
-- `vzmaster push/start/kill` over SSH; image transfer over SFTP; node-local supervision via
-  `runch`/`vzexec`.
-- Debug podman/container builds (never done end-to-end before).
+The full lifecycle now runs end to end on Rocky 9 (verified with a static-busybox smoke
+bundle): `vzmaster push` → `start` → `kill`.
+
+- `push` copies the image `.txz`; `start` unpacks it, deploys `runch`/`forever`/`vzexec`,
+  and launches the container under the `forever` supervisor; `kill` tears down the process
+  group (supervisor included — no respawn) and cleans mounts + state.
+- `runch` is currently a chroot-based OCI-bundle runner. **Podman is still on the roadmap** as
+  the real runtime (with `runc` as the other substitution target); the chroot runner is the
+  bring-up path, not the destination.
 - Everything constrained by the sleeping-plane paradigm below.
+
+**The Rocky 9 fix that mattered:** `jshon` is dead upstream (absent from EPEL 9). The
+node-side runtime (`runch`, `kill.sh`, the start playbook) was ported to **`jq`** (ships in
+Rocky baseOS). The `forever` supervisor is launched via ansible `async`/`poll: 0` so the
+connection detaches instead of hanging on the backgrounded process.
+
+**Known follow-ups (latent, not blocking):**
+- Swap the chroot runner for **Podman** (roadmap) — `runch`'s start/kill contract stays, the
+  backend changes.
+- `vzmaster.sh` still uses `jshon` to *build* JSON, but that runs on the master (Alpine, where
+  jshon is installed). Port to `jq` for consistency since jshon is unmaintained.
+- `forever` is a shell supervisor; a systemd/rc.d unit would be a sturdier node-local
+  supervisor and fits the sleeping-plane model.
+- The smoke-test bundle is gitignored (binary rootfs); a small build script would make it a
+  committable fixture.
 
 ---
 
@@ -194,8 +215,9 @@ OVH's API endpoint follows the **account's** OVH entity, *not* the physical serv
 | 1b | ~~Script the VM-creation loop (`make-rocky-vm.sh`)~~ | 1 | ✅ **done** — one-command create/destroy, prints IP | — |
 | 2 | ~~Fix + idempotent-ify `bootstrap.yaml`; debug to flawless~~ | 2 | ✅ **done** — green + idempotent on Rocky 9 | — |
 | 3 | ~~Get `vzmaster push` to succeed end-to-end~~ | 3 | ✅ **done** — image lands on a freshly bootstrapped node | — |
-| 3b | `vzmaster start`/`kill`: run a container via runch/vzexec under podman | 3 | **Next** — exercises the node-local supervisor | 3 done |
-| 4 | Migrate the real project onto the new infra | — | The actual point | 3b done |
+| 3b | ~~`vzmaster start`/`kill`: run a container via runch/vzexec~~ | 3 | ✅ **done** — full push→start→kill lifecycle on Rocky 9 (chroot runtime) | — |
+| 3c | Swap chroot runner for Podman | 3 | Roadmap — real runtime behind runch's contract | — |
+| 4 | Migrate the real project onto the new infra | — | **Next** — the actual point | 3b done |
 | 5 | Generalize Layer 1 to DigitalOcean / Vultr | 1 | Bonus | 2–3 stable |
 | 6 | OVH API automation (order server/IP, reverse DNS) | 0 | Bonus | `ovhcloud` CLI configured |
 
