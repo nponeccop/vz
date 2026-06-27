@@ -103,19 +103,23 @@ The realized design:
 - Serial-to-file (`serial0.fileType = file`, Rocky logs to `ttyS0`) is the reliable way to read
   boot/cloud-init output on a headless VM — `vim-cmd vmsvc/screenshot` needs a framebuffer.
 
-### Layer 2 — `bootstrap.sh` → manageable node  ★ THE FOCUS ★
-**ESXi-agnostic. This is what's broken and what unblocks the prize.**
+### Layer 2 — `bootstrap.sh` → manageable node  ✅ done
+**ESXi-agnostic. This was the broken piece; it now runs clean and unblocks the prize.**
 
-`bootstrap.sh` remains the artifact (portable: works wherever the handoff contract holds).
-Its job: take a clean Rocky-with-key and make it a node `vzmaster` can drive.
+`bootstrap.sh` (a thin wrapper over `bootstrap.yaml`) takes a clean Rocky-with-key and makes
+it a node `vzmaster` can drive: a deploy user in `wheel` with passwordless sudo and the key.
 
-- **Mandate: every imperative step moves into idempotent ansible**, so a failed run is safely
-  re-runnable from any partial state. Fragility was non-idempotency + missing-file bugs.
-- Existing `bootstrap.yaml` already targets RHEL/Rocky (EPEL, sudo role) — fix and harden it,
-  do **not** rewrite for another distro.
-- Audit for Rocky 10 rot (EPEL repo name, `libselinux-python` → `python3-libselinux`, etc.).
-- End state: `ansible <node> -m ping` green (while admin attached) and the node has whatever
-  `vzmaster push` requires (podman + runch/vzexec deployed).
+Fixed and verified on Rocky 9 (green + idempotent — 2nd run `changed=0`):
+- `libselinux-python` (RHEL7-era, gone on Rocky 9/10) → **`python3-libselinux`**.
+- Dropped the external `geerlingguy.repo-epel` galaxy role → native **`epel-release`** task
+  (removes a fragility — no galaxy dependency at bootstrap time).
+- Modernized modules (`ansible.builtin` / `ansible.posix`, `lookup('file', 'ssh.pub')`).
+- Added `bootstrap/ansible.cfg` (host-key handling, `roles_path`) so runs don't prompt or
+  depend on CWD quirks.
+
+**The prize is met:** `make-rocky-vm.sh` → `bootstrap.sh <ip>` → `vzmaster push <image>` lands
+an image `.txz` on the node (`vzmaster-push.yaml` now creates its image-store dir first;
+`vzmaster/ansible.cfg` added). All three steps are green and idempotent.
 
 ### Layer 3 — podman ops under `vzmaster`
 **ESXi-agnostic. The actual end the real project migrates onto.**
@@ -187,10 +191,11 @@ OVH's API endpoint follows the **account's** OVH entity, *not* the physical serv
 | # | Work | Layer | Priority | Blocker |
 |---|------|-------|----------|---------|
 | 1 | ~~Stand up disposable Rocky scratch VM on ESXi via cloud-init~~ | 1 | ✅ **done** — handoff contract validated end-to-end | — |
-| 1b | Script the VM-creation loop (`make-rocky-vm.sh`: clone base → lint+build seed → VMX from template → boot → return IP) | 1 | Next — turns provisioning into a one-command loop | — |
-| 2 | Fix + idempotent-ify `bootstrap.yaml`; debug to flawless | 2 | **The prize** | Rocky 10 rot audit |
-| 3 | Get `vzmaster push` to succeed end-to-end | 3 | Definition of done | 2 done |
-| 4 | Migrate the real project onto the new infra | — | The actual point | 3 done |
+| 1b | ~~Script the VM-creation loop (`make-rocky-vm.sh`)~~ | 1 | ✅ **done** — one-command create/destroy, prints IP | — |
+| 2 | ~~Fix + idempotent-ify `bootstrap.yaml`; debug to flawless~~ | 2 | ✅ **done** — green + idempotent on Rocky 9 | — |
+| 3 | ~~Get `vzmaster push` to succeed end-to-end~~ | 3 | ✅ **done** — image lands on a freshly bootstrapped node | — |
+| 3b | `vzmaster start`/`kill`: run a container via runch/vzexec under podman | 3 | **Next** — exercises the node-local supervisor | 3 done |
+| 4 | Migrate the real project onto the new infra | — | The actual point | 3b done |
 | 5 | Generalize Layer 1 to DigitalOcean / Vultr | 1 | Bonus | 2–3 stable |
 | 6 | OVH API automation (order server/IP, reverse DNS) | 0 | Bonus | `ovhcloud` CLI configured |
 
