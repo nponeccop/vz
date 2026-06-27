@@ -15,3 +15,6 @@ platform/ovh-esxi/config.env
 # vzmaster inventory (lab state)
 vzmaster/hosts
 vzmaster/tmp-*.json
+
+# local test bundle (contains a binary rootfs)
+oci_bundles/vztest/

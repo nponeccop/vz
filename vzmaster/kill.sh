@@ -2,7 +2,7 @@
 
 set -ex -o pipefail
 container_id=$1
-pid=$(cat /run/opencontainer/chroots/$container_id/state.json | jshon -e init_process_pid -u)
+pid=$(jq -r '.init_process_pid' /run/opencontainer/chroots/$container_id/state.json)
 pgid=$(ps -o pgid="" $pid | awk '{print $1}')
 sudo kill -- -$pgid
 

@@ -1,15 +1,36 @@
 ---
+# Unpack a pushed image bundle on the node, deploy the runch/forever/vzexec
+# scripts, and launch the container under the forever supervisor.
 - hosts: all
   tasks:
-  - package: state=present name=jshon
+  - name: runtime deps (jq for runch, xz for the bundle)
+    ansible.builtin.package:
+      name: [jq, xz]
+      state: present
     become: yes
-  - package: state=present name=xz
+  - name: bundle dir
+    ansible.builtin.file:
+      state: directory
+      path: "{{ vzexec.path }}bundles/{{ vzexec.image }}"
+  - name: unpack the image bundle
+    ansible.builtin.unarchive:
+      remote_src: yes
+      src: "{{ vzexec.path }}images/{{ vzexec.image }}.txz"
+      dest: "{{ vzexec.path }}bundles/{{ vzexec.image }}"
     become: yes
-  - file: state=directory path={{ vzexec.path }}bundles/{{ vzexec.image }}
-  - unarchive: copy=no src={{ vzexec.path }}images/{{ vzexec.image }}.txz dest={{ vzexec.path }}bundles/{{ vzexec.image }}
-    become: yes
-  - file: state=directory path={{ vzexec.path }}bin
-  - copy: src=../runch/runch.sh dest={{ vzexec.path }}bin/runch mode=755
-  - copy: src=forever.sh dest={{ vzexec.path }}bin/forever mode=755
-  - copy: src=vzexec.sh dest={{ vzexec.path }}bin/vzexec mode=755
-  - shell: "nohup {{ vzexec.path }}/bin/forever {{ vzexec.path }}/bin/runch start {{ vzexec.path }}bundles/{{ vzexec.image }} &"
+  - name: bin dir
+    ansible.builtin.file:
+      state: directory
+      path: "{{ vzexec.path }}bin"
+  - name: deploy runch
+    ansible.builtin.copy: { src: ../runch/runch.sh, dest: "{{ vzexec.path }}bin/runch", mode: '0755' }
+  - name: deploy forever
+    ansible.builtin.copy: { src: forever.sh, dest: "{{ vzexec.path }}bin/forever", mode: '0755' }
+  - name: deploy vzexec
+    ansible.builtin.copy: { src: vzexec.sh, dest: "{{ vzexec.path }}bin/vzexec", mode: '0755' }
+  - name: launch the container under the forever supervisor (fire and forget)
+    ansible.builtin.shell: >
+      {{ vzexec.path }}bin/forever
+      {{ vzexec.path }}bin/runch start {{ vzexec.path }}bundles/{{ vzexec.image }}
+    async: 2592000   # detach; supervisor runs until killed (sleeping-plane: no central poll)
+    poll: 0
