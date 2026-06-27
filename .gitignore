@@ -8,3 +8,6 @@ vzmaster/images/
 vzmaster/*.retry
 vzmaster/tmp-*.json
 oci_bundles/*/rootfs/
+
+# local site config for platform/ovh-esxi
+platform/ovh-esxi/config.env

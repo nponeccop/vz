@@ -19,6 +19,36 @@ Not reboot-survival, not a running pod — a successful push.
 
 ---
 
+## This folder
+
+Tooling that stands up the lab and provisions Rocky VMs on OVH/ESXi.
+
+| File | What it does | Runs on |
+|------|--------------|---------|
+| `setup-master-sudo.sh` | Passwordless sudo for a user (wheel group) | master, as root |
+| `setup-master-nat.sh` | Master → NAT gateway on the Internal vSwitch | master, as root |
+| `setup-master-dhcp.sh` | Master → DHCP server for the Internal vSwitch | master, as root |
+| `make-rocky-vm.sh` | Create/destroy a Rocky 9 VM satisfying the handoff contract | master |
+| `fix-ssh-agent.sh` | Re-point the shell at the rotated forwarded agent socket | master |
+| `config.env.example` | Site config template — copy to `config.env` (gitignored) | — |
+
+**Quickstart (once the master VM exists with the deploy key authorized):**
+
+```sh
+cp config.env.example config.env && $EDITOR config.env   # set ESXI, datastore, subnet
+sudo ./setup-master-sudo.sh
+sudo ./setup-master-nat.sh
+sudo ./setup-master-dhcp.sh
+# build the golden image once (see "golden image" in Layer 1), then:
+ip=$(./make-rocky-vm.sh node1)        # prints the VM's IP when root SSH is up
+./make-rocky-vm.sh -d node1           # tear it down
+```
+
+`make-rocky-vm.sh` is the disposable-VM loop for iterating on the bootstrap:
+`ip=$(make-rocky-vm.sh n1)` → run ansible against `$ip` → `make-rocky-vm.sh -d n1`.
+
+---
+
 ## The handoff contract
 
 Every layer below the bootstrap exists only to produce one thing:
