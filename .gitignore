@@ -18,3 +18,7 @@ vzmaster/tmp-*.json
 
 # local test bundle (contains a binary rootfs)
 oci_bundles/vztest/
+
+# vzbuild strace parser deps/cache
+future/vzbuild/strace/node_modules/
+future/vzbuild/strace/.tap/

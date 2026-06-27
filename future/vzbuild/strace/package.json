@@ -1,0 +1,15 @@
+{
+  "name": "vzbuild-strace",
+  "version": "0.0.0",
+  "description": "strace output parser for vzbuild image minification",
+  "private": true,
+  "scripts": {
+    "test": "tap t/grammar.js"
+  },
+  "dependencies": {
+    "panda-grammar": "*"
+  },
+  "devDependencies": {
+    "tap": "*"
+  }
+}
