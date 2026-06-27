@@ -35,20 +35,43 @@ cloud-init at all.
 
 ## Layers
 
-### Layer 1 — VM provisioning → the handoff contract
+### Layer 1 — VM provisioning → the handoff contract  ✅ validated
 **ESXi-only for now; DigitalOcean / Vultr later. Bonus, not the prize.**
 
-Produces a clean Rocky VM satisfying the handoff contract.
+Produces a clean Rocky VM satisfying the handoff contract. The end-to-end flow has been proven
+on ESXi (clean Rocky 9.8 VM, root SSH via CAPI key, DHCP address, internet via NAT).
 
-- Use **Rocky cloud images + cloud-init**, not the interactive ISO installer.
-- cloud-init is kept **deliberately minimal** — it only synthesizes the provider handoff:
-  inject the CAPI public key for `root`, ensure networking. It does **not** create users, sudo,
-  or install packages — that's ansible's job, so the same ansible runs identically on a
-  bare-VPS provider that has no cloud-init.
-- On ESXi: download the Rocky cloud image to `datastore1`, seed cloud-init via a config ISO
-  (or guestinfo), create the VM with `vim-cmd`, power on.
+The realized design:
+
+- **Internal vSwitch + master as NAT/DHCP gateway.** VMs sit on an isolated `Internal`
+  portgroup; the master bridges them to the internet. The master's internal NIC is the gateway
+  (e.g. `10.10.10.1/24`) with `iptables` masquerade out the public NIC, IPv4 forwarding on, and
+  `dnsmasq` serving DHCP on the internal range. **This is what makes the handoff contract real:
+  a VM gets a working network the instant it boots, exactly like a VPS provider hands one over.**
+- **Golden image, cloned per VM.** Download the Rocky cloud image once, convert `qcow2 →
+  streamOptimized VMDK → VMFS thin` (qemu-img on a temporary scratch disk, since the master root
+  fs is tiny; then `vmkfstools -i`). Keep the result as a read-only base and `vmkfstools -i`
+  clone it per VM — no re-download/convert.
+- **cloud-init seed = key-only (NoCloud ISO).** A tiny ISO labelled `CIDATA` with `meta-data` +
+  `user-data` that injects the CAPI key for `root` and sets `PermitRootLogin prohibit-password`
+  via an `sshd_config.d` drop-in. **No network-config** — DHCP from the master handles
+  networking, which is simpler and provider-agnostic. cloud-init does **not** create users, sudo,
+  or install packages — that's ansible's job, so the same ansible runs identically on a bare-VPS
+  provider that has no cloud-init.
+- Create the VM with `vim-cmd` (clone disk, write VMX, register, power on).
 - Manual / OVH-API steps that stay out of band: ordering the server, ordering an extra IP,
   reverse DNS. (See OVH note below.)
+
+**Gotchas learned the hard way (feed these into any automation):**
+- The seed `user-data` **must be valid YAML** — one bad escape silently voids the *entire*
+  cloud-config (cloud-init logs "empty cloud config" and applies nothing). Lint it with
+  `python3 -c 'import yaml,sys; yaml.safe_load(...)'` before building the ISO.
+- Guest NIC under Rocky 9 + vmxnet3 is **`eth0`**.
+- **EFI + Secure Boot works** with Rocky 9 GenericCloud (signed shim/GRUB).
+- A hand-rolled minimal VMX panics on `SVGA Framebuffer exceeds memory reservation`; copy a
+  known-good template's SVGA settings (or `svga.present = "FALSE"` for headless) instead.
+- Serial-to-file (`serial0.fileType = file`, Rocky logs to `ttyS0`) is the reliable way to read
+  boot/cloud-init output on a headless VM — `vim-cmd vmsvc/screenshot` needs a framebuffer.
 
 ### Layer 2 — `bootstrap.sh` → manageable node  ★ THE FOCUS ★
 **ESXi-agnostic. This is what's broken and what unblocks the prize.**
@@ -133,8 +156,9 @@ OVH's API endpoint follows the **account's** OVH entity, *not* the physical serv
 
 | # | Work | Layer | Priority | Blocker |
 |---|------|-------|----------|---------|
-| 1 | Stand up disposable Rocky scratch VM on ESXi via cloud-init | 1 | **First** — needed to test everything else | Download Rocky cloud image to datastore1 |
-| 2 | Fix + idempotent-ify `bootstrap.yaml`; debug to flawless | 2 | **The prize** | Rocky 10 rot audit; scratch VM |
+| 1 | ~~Stand up disposable Rocky scratch VM on ESXi via cloud-init~~ | 1 | ✅ **done** — handoff contract validated end-to-end | — |
+| 1b | Script the VM-creation loop (`make-rocky-vm.sh`: clone base → lint+build seed → VMX from template → boot → return IP) | 1 | Next — turns provisioning into a one-command loop | — |
+| 2 | Fix + idempotent-ify `bootstrap.yaml`; debug to flawless | 2 | **The prize** | Rocky 10 rot audit |
 | 3 | Get `vzmaster push` to succeed end-to-end | 3 | Definition of done | 2 done |
 | 4 | Migrate the real project onto the new infra | — | The actual point | 3 done |
 | 5 | Generalize Layer 1 to DigitalOcean / Vultr | 1 | Bonus | 2–3 stable |
@@ -148,3 +172,6 @@ OVH's API endpoint follows the **account's** OVH entity, *not* the physical serv
 - **Rocky 9** is the target — its cloud images and cloud-init datasource are well-trodden.
   Get the bootstrap flawless on 9 before considering Rocky 10.
 - Direct push to the repo (no fork).
+- **Networking by DHCP from the master**, not per-VM static cloud-init config. Simpler, and it
+  matches the provider-handoff model (a VM just gets a working network on boot).
+- **Seeds are key-only** — networking is the lab's job (DHCP), not the seed's.
