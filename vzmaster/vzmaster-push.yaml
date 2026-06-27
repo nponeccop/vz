@@ -1,4 +1,12 @@
 ---
+# Push a built image (.txz) to a node's vzexec image store over SSH.
 - hosts: all
   tasks:
-  - copy: src="images/{{ vzexec.image }}.txz" dest="{{ vzexec.path }}/images/"
+  - name: ensure the image store exists
+    ansible.builtin.file:
+      path: "{{ vzexec.path }}/images/"
+      state: directory
+  - name: copy the image bundle
+    ansible.builtin.copy:
+      src: "images/{{ vzexec.image }}.txz"
+      dest: "{{ vzexec.path }}/images/"

@@ -1,21 +1,48 @@
 ---
+# Make a fresh Rocky node manageable by vzmaster: a deploy user with passwordless
+# sudo and the deploy key, plus EPEL for later management tooling.
+# Connects as root (the handoff contract guarantees root + key); idempotent.
 - hosts: all
-  user: root
+  remote_user: root
   vars:
     vzexec:
       user: "{{ local_user.stdout }}"
-  roles:
-      - mivok0.sudo
-      - geerlingguy.repo-epel
   pre_tasks:
-      - package: state=present name=libselinux-python
-      - name: get the username running the deploy
-        local_action: command whoami
-        register: local_user
-      - ping: ""
-      - user: name={{ vzexec.user }} state=present groups=wheel append=yes
-      - authorized_key: user={{ vzexec.user }} key="{{ item }}"
-        with_file: ./ssh.pub
-      - authorized_key: user=root key="{{ item }}"
-        with_file: ./ssh.pub
+    - name: identify the operator running the deploy
+      delegate_to: localhost
+      become: false
+      ansible.builtin.command: whoami
+      register: local_user
+      changed_when: false
 
+    - name: ping the node
+      ansible.builtin.ping:
+
+    - name: enable EPEL (provides management tooling like jshon)
+      ansible.builtin.dnf:
+        name: epel-release
+        state: present
+
+    - name: SELinux python bindings (for selinux-aware modules)
+      ansible.builtin.dnf:
+        name: python3-libselinux
+        state: present
+
+    - name: create the deploy user in the wheel group
+      ansible.builtin.user:
+        name: "{{ vzexec.user }}"
+        state: present
+        groups: wheel
+        append: true
+
+    - name: authorize the deploy key for the deploy user
+      ansible.posix.authorized_key:
+        user: "{{ vzexec.user }}"
+        key: "{{ lookup('file', 'ssh.pub') }}"
+
+    - name: authorize the deploy key for root
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ lookup('file', 'ssh.pub') }}"
+  roles:
+    - mivok0.sudo
