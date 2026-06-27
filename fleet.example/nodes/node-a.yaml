@@ -1,0 +1,28 @@
+# Desired state for node-a: the anti-fraud pod.
+#
+# gearmand + a node.js worker share localhost via hostNetwork (the property the
+# v2 chroot gave us for free; here it is explicit and Podman honors it).
+#
+# Images are local-only (localhost/...) and never pulled — vz pushes them into
+# the node's containers-storage first. Validate with:
+#   node ../../vztool/src/validate.ts node-a.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: antifraud
+spec:
+  hostNetwork: true
+  restartPolicy: Always
+  containers:
+    - name: gearmand
+      image: localhost/gearmand:v3
+      imagePullPolicy: Never
+    - name: dns-resolver
+      image: localhost/dns-resolver:v3
+      imagePullPolicy: Never
+      command: ["node", "/app/index.js"]
+      env:
+        - name: GEARMAN_HOST
+          value: "127.0.0.1"
+        - name: LOG_LEVEL
+          value: "info"

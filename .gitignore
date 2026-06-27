@@ -23,6 +23,12 @@ oci_bundles/vztest/
 future/vzbuild/strace/node_modules/
 future/vzbuild/strace/.tap/
 
+# vztool (v3 master CLI) deps
+vztool/node_modules/
+
+# fleet build artifacts (OCI archives)
+fleet.example/out/
+
 # vzbuild local build artifacts
 future/vzbuild/*.trace
 future/vzbuild/*.parsed

@@ -139,5 +139,9 @@ annoyance, not an outage.
 
 ## Node platform
 
-Nodes are **Rocky Linux 9 only** in v3 (Podman + Quadlet + systemd from the
-stock repos). The master remains close to distribution-agnostic.
+Nodes are **Rocky Linux 9 only** in v3. Everything the node needs is *available*
+from stock appstream (verified on Rocky 9.8: `podman` 5.8 — which bundles
+Quadlet at `/usr/libexec/podman/quadlet` plus the systemd generator —
+`skopeo` 1.22, `buildah` 1.43, cgroups v2), with no third-party repos. None of
+it is installed by default: bootstrap installs it (`dnf install podman skopeo
+buildah`). The master remains close to distribution-agnostic.

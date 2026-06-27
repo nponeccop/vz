@@ -1,0 +1,21 @@
+{
+  "name": "vztool",
+  "version": "0.0.0",
+  "description": "vz v3 master-side CLI: validate/apply/ps/diff the fleet desired state",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "vz-validate": "src/validate.ts"
+  },
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5"
+  }
+}
