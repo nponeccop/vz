@@ -8,6 +8,11 @@ A distributed independent cloud capable of running Podman pods on low RAM hosts.
 
 Distibuted means reliable, independent means free as in freedom, low RAM means cheaper as the VPS cost is dominated by the RAM amount.
 
+> **v3 (current):** the Podman-based line. See [`SPEC-v3.md`](SPEC-v3.md).
+> `podman kube play` + Quadlet own the node; vz owns the fleet (desired state in
+> git, WAN image push, `vz apply`/`ps`/`diff`). The chroot/`runch` bring-up work
+> is archived on the **`v2` branch**.
+
 Workflow of 2.x
 ---------------
 
