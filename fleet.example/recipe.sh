@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fleet build recipe — produces every image referenced by nodes/*.yaml.
+# Fleet build recipe — produces every image referenced by pods/*.yaml.
 #
 # This is the single place that answers "how is each image built", so reading a
 # node manifest (what runs) plus this file (how it is built) is enough to change

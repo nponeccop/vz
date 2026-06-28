@@ -1,11 +1,12 @@
-# Desired state for node-a: the anti-fraud pod.
+# The anti-fraud pod. Runs on every host of whichever group references it in
+# groups.yaml (e.g. group "node-a").
 #
 # gearmand + a node.js worker share localhost via hostNetwork (the property the
 # v2 chroot gave us for free; here it is explicit and Podman honors it).
 #
 # Images are local-only (localhost/...) and never pulled — vz pushes them into
-# the node's containers-storage first. Validate with:
-#   node ../../vztool/src/validate.ts node-a.yaml
+# the node's containers-storage first. Validate the whole fleet with:
+#   node ../../vztool/src/validate.ts ../groups.yaml
 apiVersion: v1
 kind: Pod
 metadata:

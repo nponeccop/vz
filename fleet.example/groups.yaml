@@ -1,0 +1,15 @@
+# Fleet topology — the vz-owned half of the desired state.
+#
+# A group names a set of nodes (by IP or hostname) that all run the SAME pod.
+# This is deliberately separate from the pod manifests: a Pod describes a
+# workload (pure k8s subset, strictly validated), while placement — which hosts
+# run it — is vz's concern, the same split as Ansible inventory vs. playbook.
+#
+# Validate the whole fleet (this file + every pod it references) with:
+#   node ../vztool/src/validate.ts groups.yaml
+groups:
+  node-a:
+    hosts:
+      - 10.10.10.67
+      - 10.10.10.68
+    pod: pods/antifraud.yaml

@@ -6,16 +6,24 @@ runbook: `git log` answers "why did this change" months later. See
 [`../SPEC-v3.md`](../SPEC-v3.md).
 
 ```
+groups.yaml      topology: group -> { hosts: [IPs], pod: <path> }   (vz's format)
 recipe.sh        one build recipe that produces every fleet image (2-layer base+app)
-nodes/
-  node-a.yaml    k8s-subset Pod manifest — the desired state for one node
+pods/
+  antifraud.yaml k8s-subset Pod manifest — the workload one or more groups run
 ```
+
+**Why two files.** A *Pod* describes a workload (pure Kubernetes subset,
+strictly validated). *Placement* — which hosts run it — is vz's concern, kept in
+`groups.yaml`. This is the Ansible split (inventory vs. playbook): the same pod
+can be reused by several groups, and a host belongs to exactly one group (it
+runs one pod).
 
 ## Workflow
 
 ```sh
-# 1. Validate every manifest against the subset vz honors (stricter than podman):
-node ../vztool/src/validate.ts nodes/*.yaml
+# 1. Validate the whole fleet (topology + every referenced pod) against the
+#    subset vz honors (stricter than podman):
+node ../vztool/src/validate.ts groups.yaml
 
 # 2. Build images (writes OCI archives to ./out/):
 ./recipe.sh
@@ -26,5 +34,5 @@ node ../vztool/src/validate.ts nodes/*.yaml
 #    vz diff         # desired (this repo) minus actual
 ```
 
-One Pod per file. A manifest references images as `localhost/<name>:<tag>` with
-`imagePullPolicy: Never`; `recipe.sh` defines how those tags are built.
+Pods reference images as `localhost/<name>:<tag>` with `imagePullPolicy: Never`;
+`recipe.sh` defines how those tags are built.
