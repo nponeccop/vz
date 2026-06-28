@@ -2,18 +2,22 @@
 // vz-apply — make the fleet's desired state actual.
 //
 // For each host in each group: push the pod's images with `podman image scp`
-// (whole-image transfer over SSH — see SPEC-v3.md), copy the manifest, and run
-// `podman kube play --replace` so the running pod matches the manifest.
+// (whole-image transfer over SSH — see SPEC-v3.md), then install the manifest
+// as a rootless Quadlet `.kube` unit and (re)start it via the user systemd
+// manager. systemd owns the pod, so it also comes back on reboot.
 //
 // Usage: vz-apply <groups.yaml> [--user <name>] [--dry-run]
-//
-// Reboot survival (Quadlet) is step 5; this command starts the pod now.
 
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadPlan, type HostTask } from "./plan.ts";
+import { kubeUnit, serviceName } from "./unit.ts";
 
 const SSH_OPTS = ["-o", "StrictHostKeyChecking=accept-new"];
-const REMOTE_DIR = ".config/vz"; // relative to the remote user's home
+// rootless Quadlet dir, relative to the remote user's home
+const REMOTE_DIR = ".config/containers/systemd";
 
 interface Opts {
   groupsPath: string;
@@ -50,10 +54,21 @@ function applyHost(t: HostTask, dryRun: boolean): void {
     run("podman", ["image", "scp", image, `${target}::`], dryRun);
   }
 
-  const remoteFile = `${REMOTE_DIR}/${t.podName}.yaml`;
+  const remoteYaml = `${REMOTE_DIR}/${t.podName}.yaml`;
+  const remoteKube = `${REMOTE_DIR}/${t.podName}.kube`;
   run("ssh", [...SSH_OPTS, target, "mkdir", "-p", REMOTE_DIR], dryRun);
-  run("scp", [...SSH_OPTS, t.manifestPath, `${target}:${remoteFile}`], dryRun);
-  run("ssh", [...SSH_OPTS, target, "podman", "kube", "play", "--replace", remoteFile], dryRun);
+  run("scp", [...SSH_OPTS, t.manifestPath, `${target}:${remoteYaml}`], dryRun);
+
+  // install the Quadlet .kube unit beside the manifest
+  const kubePath = join(tmpdir(), `vz-${t.podName}.kube`);
+  if (!dryRun) writeFileSync(kubePath, kubeUnit(t.podName));
+  run("scp", [...SSH_OPTS, kubePath, `${target}:${remoteKube}`], dryRun);
+
+  // regenerate units and (re)start via the user manager; XDG_RUNTIME_DIR is set
+  // because `systemctl --user` over a non-login SSH session has no bus otherwise
+  const svc = serviceName(t.podName);
+  const remoteCmd = `export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user daemon-reload && systemctl --user restart ${svc}`;
+  run("ssh", [...SSH_OPTS, target, remoteCmd], dryRun);
 }
 
 function main(argv: string[]): number {

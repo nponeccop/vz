@@ -119,20 +119,21 @@ deploy frequency ever make the WAN cost bite, revisit the ephemeral registry.
   surface** — the thing that tells you a node rebooted and came back empty, or
   that a deploy half-applied.
 
-## Reboot survival (lowest priority)
+## Reboot survival (implemented)
 
-A Quadlet `.kube` unit in `/etc/containers/systemd/` is a systemd service;
-systemd brings the pod up on boot. This *falls out* of the Podman swap rather
-than being built — which is why it is last. Reboots happen quarterly and are an
-annoyance, not an outage.
+`vz apply` installs the manifest as a rootless Quadlet `.kube` unit in
+`~/.config/containers/systemd/<pod>.kube` (beside `<pod>.yaml`); the systemd
+generator turns it into `<pod>.service`, and with linger enabled the user
+manager starts it on boot. Verified on bs-test: after a real reboot the pod
+came back on its own and `vz diff` reported converged with no apply.
 
 ## Build order (by value, not by fun)
 
-1. Desired-state in git: layout, fleet `recipe.sh`, manifest schema + validator.
-2. `vzbuild`: OCI-wrap + 2-layer (base/app).
-3. `vz apply`: layer-aware push + `podman kube play`.
-4. `vz ps` + `vz diff`.
-5. Quadlet boot units (mostly free once on Podman).
+1. ✅ Desired-state in git: layout, fleet `recipe.sh`, manifest schema + validator.
+2. ✅ `vzbuild`: OCI-wrap (+ optional 2-layer base/app).
+3. ✅ `vz apply`: `podman image scp` push + Quadlet install.
+4. ✅ `vz ps` + `vz diff`.
+5. ✅ Quadlet boot units (folded into `vz apply`).
 
 ## What v2 retires
 
