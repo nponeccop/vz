@@ -8,12 +8,18 @@ import { parseAllDocuments } from "yaml";
 import { validate } from "./validate.ts";
 import { validateGroups } from "./groups.ts";
 
+export interface PodContainer {
+  name: string;
+  image: string;
+}
+
 export interface HostTask {
   group: string;
   host: string;
   user: string;
   podName: string;
   manifestPath: string; // absolute path to the pod manifest
+  containers: PodContainer[]; // desired containers (name + image)
   images: string[]; // unique images referenced by the pod
 }
 
@@ -38,19 +44,19 @@ export function loadPlan(groupsPath: string, user: string): HostTask[] {
   const base = dirname(groupsPath);
   const refs = validateGroups(readSingle(groupsPath), []); // already known valid
 
-  const podCache = new Map<string, { name: string; images: string[] }>();
+  const podCache = new Map<string, { name: string; containers: PodContainer[]; images: string[] }>();
   const tasks: HostTask[] = [];
   for (const ref of refs) {
     const manifestPath = resolve(base, ref.pod);
     let pod = podCache.get(manifestPath);
     if (!pod) {
       const doc = readSingle(manifestPath);
-      const images: string[] = doc.spec.containers.map((c: any) => c.image);
-      pod = { name: doc.metadata.name, images: [...new Set(images)] };
+      const containers: PodContainer[] = doc.spec.containers.map((c: any) => ({ name: c.name, image: c.image }));
+      pod = { name: doc.metadata.name, containers, images: [...new Set(containers.map((c) => c.image))] };
       podCache.set(manifestPath, pod);
     }
     for (const host of ref.hosts) {
-      tasks.push({ group: ref.name, host, user, podName: pod.name, manifestPath, images: pod.images });
+      tasks.push({ group: ref.name, host, user, podName: pod.name, manifestPath, containers: pod.containers, images: pod.images });
     }
   }
   return tasks;

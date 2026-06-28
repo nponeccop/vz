@@ -6,7 +6,9 @@
   "type": "module",
   "bin": {
     "vz-validate": "src/validate.ts",
-    "vz-apply": "src/apply.ts"
+    "vz-apply": "src/apply.ts",
+    "vz-ps": "src/ps.ts",
+    "vz-diff": "src/diff.ts"
   },
   "scripts": {
     "test": "node --test",
