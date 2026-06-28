@@ -155,5 +155,20 @@ Nodes are **Rocky Linux 9 only** in v3. Everything the node needs is *available*
 from stock appstream (verified on Rocky 9.8: `podman` 5.8 — which bundles
 Quadlet at `/usr/libexec/podman/quadlet` plus the systemd generator —
 `skopeo` 1.22, `buildah` 1.43, cgroups v2), with no third-party repos. None of
-it is installed by default: bootstrap installs it (`dnf install podman skopeo
-buildah`). The master remains close to distribution-agnostic.
+it is installed by default; bootstrap installs it and enables rootless
+persistence:
+
+- `dnf install podman skopeo buildah`
+- `loginctl enable-linger <user>` — **required**: rootless pods are owned by the
+  deploy user's systemd manager. Without linger, closing the `vz apply` SSH
+  session tears the pod down (observed: SIGKILL / exit 137). Linger keeps the
+  user manager alive past logout and is also what lets the Quadlet boot units
+  (step 5) start the pod on reboot.
+
+**Where `vz apply` runs.** It needs the images in a local rootless `podman`
+store, so it runs on a build/control host with `podman`/`buildah`. Today that is
+the Alpine master (podman 5.8 with the `vfs` storage driver — the VM kernel has
+no `/dev/fuse`/overlay, and `vfs` needs neither). The master remains close to
+distribution-agnostic, but the long-term direction is **Rocky-only** (Alpine was
+only ever the small-ISO ESXi bootstrap host); on Rocky the build host uses
+overlay and none of the vfs/subuid/XDG workarounds are needed.

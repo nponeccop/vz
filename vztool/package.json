@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "vz-validate": "src/validate.ts"
+    "vz-validate": "src/validate.ts",
+    "vz-apply": "src/apply.ts"
   },
   "scripts": {
     "test": "node --test",
