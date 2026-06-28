@@ -24,14 +24,33 @@ The production shape is **gearmand + a node.js worker in one pod, talking over
       from an external client on the build host over the network
       (scheduler → gearmand → in-pod worker → result). This is the real arch.
 
+**Proven (cont.):**
+
+- [x] **gearmand minified the vz way (153MB → 21MB)** and verified in the pod
+      (worker connects over localhost, master job round-trips). Done via the
+      *supported same-system flow*: install gearmand on the Rocky build host →
+      strace it against the host's own `/` → `strace-spec.sh <parsed> /` →
+      rsync `from-spec` → `oci.sh base`. The whole anti-fraud pod is now vz-built.
+
+  Gotchas worth remembering:
+  - The vzbuild minifier is **same-system only** — install + trace + build on
+    one host with `ROOT=/`. Tracing an *isolated/foreign rootfs* (e.g. a pulled
+    Debian image via chroot) is NOT supported: `dir-links.js`'s host-side
+    resolution and `strace-spec.sh`'s hardcoded `/lib /lib64 /etc` finds both
+    assume the traced system IS the build host.
+  - gearmand on Rocky 9 needs **EPEL + CRB** (`gearmand` is in EPEL but pulls
+    `libmemcached.so.11`, provided by `libmemcached-awesome` in CRB).
+  - Two adapters when scripting the flow: drop **transient files** (gearmand's
+    `/var/gearmand.pid`) from the parsed list before `dir-links` (it dies on any
+    non-existent path); and write the rsync `--files-from` to a **real file**,
+    not a `<(process substitution)`, because `sudo rsync` can't read the caller's
+    `/dev/fd`.
+
 **Remaining to call production-ready:**
 
 - [ ] Use the **actual production worker source** (the bulk DNS resolver), not
       the demo `vzreverse`.
-- [ ] **Minify gearmand the vz way** instead of pulling a 153MB Debian image
-      (`docker.io/pataquets/gearmand` was used for the demo): strace-minify it
-      (`strace-trace.sh` → `strace-spec.sh` → `from-spec.sh`) then `oci.sh base`.
-      Same for trimming the node base.
+- [ ] Optionally trim the node base the same way.
 - [ ] Promote the demo to a committable example (worker.js + 2-container pod) in
       `fleet.example/`, if useful — currently throwaway in `/tmp`.
 
