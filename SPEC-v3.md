@@ -73,35 +73,47 @@ like k8s but silently no-ops 95% of PodSpec. So:
 that (`imagePullPolicy: Never`) and pre-seed each node's local
 `containers-storage`. Pipeline:
 
-1. `vzbuild` minifies the rootfs (strace-driven, as in v2 — defended: WAN
-   transfer is network-bound and a smaller attack surface is a goal).
-2. **OCI-wrap** the minified rootfs into a loadable image
-   (`buildah` / `podman build` `FROM scratch; COPY rootfs/`). This is new work:
-   v2's bare `tar.xz` rootfs is not an OCI image and `kube play` cannot consume
-   it.
-3. Export as an OCI archive (`skopeo copy … oci-archive:`).
-4. WAN-transfer the archive to the target nodes (over SSH).
-5. On the node: `skopeo copy oci-archive:img.tar containers-storage:localhost/img:v3`.
-6. `podman kube play node-x.yaml`.
+1. `vzbuild` minifies the rootfs (strace-driven, as in v2 — defended: smaller
+   attack surface, smaller first push, less disk on the node).
+2. **OCI-wrap** the minified rootfs into a loadable image (`future/vzbuild/oci.sh`,
+   rootless `buildah from scratch` + copy). This is new work: v2's bare `tar.xz`
+   rootfs is not an OCI image and `kube play` cannot consume it.
+3. Push the image to each target node with **`podman image scp`**.
+4. `podman kube play node-x.yaml` on the node.
 
-### Two layers: base + app
+### Transport: `podman image scp` (whole image, no registry)
 
-Images are built in **two layers**, because the dominant change is "edit one
-source file and redeploy":
+`podman image scp <image> <user>@<host>::` does `podman save | ssh | podman
+load` — a whole-image transfer over plain SSH, no registry, no daemon, no
+custom transfer code. This is the least-code transport and fits the sleeping
+plane exactly (SSH is the only channel).
 
-- **base layer** — runtime + libraries (node.js, gearmand, etc.). Big, changes
-  rarely, pushed once.
-- **app layer** — the application source (`index.js` and friends). Tiny,
-  changes often.
+**Rejected alternatives, with the evidence:**
 
-A source update ships **only the app layer**; Podman/skopeo dedup the unchanged
-base blob. This keeps the minified attack surface *and* makes WAN updates cheap.
+- *rsync of an OCI-layout directory* (hoping content-addressed blobs dedup for
+  free): tested on bs-test and **refuted twice** — a one-file app edit re-shipped
+  ~960KB of a 968KB image, compressed *and* uncompressed. OCI layer tar digests
+  are not reproducible across builds (re-tarring varies mtimes/ordering), so the
+  base layer looks new to rsync every deploy. Content-addressing only helps if
+  the addresses are stable; skopeo-to-directory does not make them stable.
+- *Ephemeral SSH-tunnelled registry* (the only thing that reliably ships just
+  the changed layer, via registry HEAD-skip): real delta, but reintroduces a
+  registry process. Deferred — not worth the complexity at our deploy cadence.
+
+**Consequence for layering:** with whole-image scp, the 2-layer base+app split
+buys **no transfer saving** — the base rides along on every deploy. `oci.sh`
+still supports layering (it can speed local rebuilds), but the transport-delta
+rationale is gone. For most pods a single minified image is simplest. The
+trade-off we accept: an `index.js` edit re-ships the whole base. At our cadence
+(infrequent, operator-driven redeploys, not CI) that is fine; if base sizes or
+deploy frequency ever make the WAN cost bite, revisit the ephemeral registry.
 
 ## Commands
 
-- `vz apply` — render desired state from git; for each node, push any new image
-  layers and the manifest, then run `podman kube play` (installed as a Quadlet
-  unit so it persists). Replaces v2's imperative fire-and-forget Ansible push.
+- `vz apply` — render desired state from git; for each host in each group,
+  `podman image scp` the pod's images and copy the manifest, then run
+  `podman kube play` (installed as a Quadlet unit so it persists). Replaces v2's
+  imperative fire-and-forget Ansible push.
 - `vz ps` — fleet-wide actual running state (queried live per node).
 - `vz diff` — desired (git) minus actual (`vz ps`). **This diff is the product
   surface** — the thing that tells you a node rebooted and came back empty, or
