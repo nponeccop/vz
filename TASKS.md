@@ -9,21 +9,31 @@ What is left is hardening and the real migration. Roughly in priority order.
 
 ## 1. Migrate the real workload (the actual proof)
 
-Everything so far was proven with a single-container smoke pod. The real test is
-the production shape: **gearmand + a node.js worker in one pod, talking over
+The production shape is **gearmand + a node.js worker in one pod, talking over
 `localhost`** (`hostNetwork: true`), under rootless Podman.
 
-- [ ] Minify gearmand and the node.js runtime with the strace minifier
-      (`future/vzbuild`: `strace-trace.sh` → `strace-spec.sh` → `from-spec.sh`),
-      then `oci.sh base` each.
-- [ ] `oci.sh app` to layer the worker source onto the node base.
-- [ ] Write the real pod manifest + a `groups.yaml`; `vz-validate` it.
-- [ ] `vz apply` and confirm the worker reaches gearmand on `127.0.0.1`
-      (the localhost-colocation property; verify it holds rootless + hostNetwork).
-- [ ] Confirm only the intended port is reachable from outside.
+**Proven (demo) — the model carries the workload:**
 
-This is the thing that de-risks migrating production; until it works the model
-is unproven for the target app.
+- [x] node.js runtime through the whole vz pipeline: assembled a node rootfs
+      (binary + `ldd` libs), `oci.sh base/app`, `vz apply`, served HTTP on the
+      host's port via `hostNetwork`.
+- [x] Two-container pod (gearmand + node.js worker using the **abraxas** gearman
+      lib) deployed via `vz apply`; the worker reached gearmand on `127.0.0.1`
+      (gearmand logged the loopback connection; worker logged an ECHO round-trip).
+- [x] Full job round-trip: `vzreverse` job processed in-pod, **and** submitted
+      from an external client on the build host over the network
+      (scheduler → gearmand → in-pod worker → result). This is the real arch.
+
+**Remaining to call production-ready:**
+
+- [ ] Use the **actual production worker source** (the bulk DNS resolver), not
+      the demo `vzreverse`.
+- [ ] **Minify gearmand the vz way** instead of pulling a 153MB Debian image
+      (`docker.io/pataquets/gearmand` was used for the demo): strace-minify it
+      (`strace-trace.sh` → `strace-spec.sh` → `from-spec.sh`) then `oci.sh base`.
+      Same for trimming the node base.
+- [ ] Promote the demo to a committable example (worker.js + 2-container pod) in
+      `fleet.example/`, if useful — currently throwaway in `/tmp`.
 
 ## 2. Make bootstrap v3-aware
 
@@ -40,8 +50,11 @@ were done by hand during bring-up and need to land in the bootstrap playbook
 `vz apply` runs on a host with a local rootless Podman store. Today that is the
 Alpine bootstrap host, which needed workarounds (vfs storage driver, manual
 `/etc/subuid`+`/etc/subgid`, a `XDG_RUNTIME_DIR` export in `~/.profile`) because
-its kernel has no `/dev/fuse`/overlay and no logind session. These are
-**host-local and not in the repo**.
+its kernel has no `/dev/fuse`/overlay and no logind session. Its root disk is
+also tiny (~2.7G), and vfs duplicates every layer, so the podman graphroot was
+moved to a tmpfs (`/tmp`, RAM-backed) to fit a glibc gearmand image — fine while
+RAM is free, but it evaporates on reboot. These are all **host-local, not in the
+repo**, and all disappear on Rocky.
 
 - [ ] Stand up the build/control host on Rocky 9 (overlay, subuid, logind all
       work out of the box — none of the Alpine workarounds needed).
