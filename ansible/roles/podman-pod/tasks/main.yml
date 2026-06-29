@@ -22,7 +22,7 @@
     state: directory
     mode: "0755"
   vars:
-    quadlet_dir: "{{ ansible_user_dir }}/.config/containers/systemd"
+    quadlet_dir: "{{ ansible_facts['user_dir'] }}/.config/containers/systemd"
 
 - name: local image ids (on the control host)
   delegate_to: localhost
@@ -42,7 +42,7 @@
 - name: push images whose id differs from the node (podman image scp over SSH)
   delegate_to: localhost
   ansible.builtin.command:
-    cmd: "podman image scp {{ item.0 }} {{ ansible_user_id }}@{{ inventory_hostname }}::"
+    cmd: "podman image scp {{ item.0 }} {{ ansible_facts['user_id'] }}@{{ inventory_hostname }}::"
   loop: "{{ pod_images | zip(local_img.results, remote_img.results) | list }}"
   loop_control:
     label: "{{ item.0 }}"
@@ -56,22 +56,17 @@
 - name: install the pod manifest beside the unit
   ansible.builtin.copy:
     src: "{{ pod_manifest }}"
-    dest: "{{ ansible_user_dir }}/.config/containers/systemd/{{ pod_name }}.yaml"
+    dest: "{{ ansible_facts['user_dir'] }}/.config/containers/systemd/{{ pod_name }}.yaml"
     mode: "0644"
   register: manifest
 
 - name: generate the Quadlet .kube unit (references the manifest by path)
   containers.podman.podman_play:
-    kube_file: "{{ ansible_user_dir }}/.config/containers/systemd/{{ pod_name }}.yaml"
+    kube_file: "{{ ansible_facts['user_dir'] }}/.config/containers/systemd/{{ pod_name }}.yaml"
     state: quadlet
     quadlet_filename: "{{ pod_name }}"
-    quadlet_dir: "{{ ansible_user_dir }}/.config/containers/systemd"
+    quadlet_dir: "{{ ansible_facts['user_dir'] }}/.config/containers/systemd"
   register: quadlet
-
-- name: resolve the user runtime dir (for systemctl --user over non-login SSH)
-  ansible.builtin.command: id -u
-  register: uid
-  changed_when: false
 
 - name: (re)start the pod via the user systemd manager
   ansible.builtin.systemd_service:
@@ -82,7 +77,7 @@
     # restart only when something actually changed; otherwise just ensure running
     state: "{{ 'restarted' if (img_push is changed or manifest is changed or quadlet is changed) else 'started' }}"
   environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ uid.stdout }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
 
 # --- firewall: declared pod ports drive firewalld (desired state, not manual) ---
 - name: gather service facts (is firewalld running?)
