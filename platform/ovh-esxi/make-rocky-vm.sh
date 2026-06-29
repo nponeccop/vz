@@ -8,11 +8,21 @@
 #   make-rocky-vm.sh -d NAME         destroy VM NAME (power off, unregister, delete)
 #
 # Configuration: ./config.env (gitignored) overrides the defaults below.
-# See config.env.example. Key vars: ESXI, DATASTORE, PORTGROUP, BASE_VMDK, MEM, CPUS.
+# See config.env.example. Key vars: ESXI, DATASTORE, PORTGROUP, BASE_VMDK, MEM,
+# CPUS, DISK (grow root disk; empty = golden image size).
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# Precedence: explicit environment > config.env > built-in defaults. Capture any
+# caller-set vars first, source config.env, then re-apply the caller's values so
+# `MEM=4096 CPUS=2 DISK=40G make-rocky-vm.sh ...` is not clobbered by config.env.
+for __v in ESXI DATASTORE PORTGROUP BASE_VMDK SSH_PUB LEASES MEM CPUS DISK WORK; do
+  eval "__env_$__v=\${$__v+x}"; eval "__envval_$__v=\${$__v:-}"
+done
 [ -f "$SCRIPT_DIR/config.env" ] && . "$SCRIPT_DIR/config.env"
+for __v in ESXI DATASTORE PORTGROUP BASE_VMDK SSH_PUB LEASES MEM CPUS DISK WORK; do
+  eval "[ -n \"\${__env_$__v}\" ] && $__v=\${__envval_$__v}" || true
+done
 
 ESXI=${ESXI:-root@esxi.example.net}
 DATASTORE=${DATASTORE:-/vmfs/volumes/datastore1}
@@ -22,6 +32,10 @@ SSH_PUB=${SSH_PUB:-$SCRIPT_DIR/../../ansible/ssh.pub}
 LEASES=${LEASES:-/var/lib/misc/dnsmasq.leases}
 MEM=${MEM:-2048}
 CPUS=${CPUS:-1}
+# DISK: grow the cloned root disk to this size (e.g. 40G) before first boot, so
+# the Rocky cloud image's cloud-init growpart extends root to fill it. Empty =
+# keep the golden image's size (10G). Accepts vmkfstools -X sizes (G/K/m...).
+DISK=${DISK:-}
 WORK=${WORK:-${TMPDIR:-/tmp}/ovh-esxi-seeds}
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -65,6 +79,10 @@ build_seed() {
   cat > "$d/user-data" <<EOF
 #cloud-config
 # Minimal handoff: root reachable over SSH with the deploy key. Networking via lab DHCP.
+# Exception to "key-only": open-vm-tools is installed here because it is
+# hypervisor-specific (ESXi needs the guest agent for IP reporting and graceful
+# shutdown) and irrelevant on bare-VPS providers — so it is an ESXi-seed concern,
+# not something the provider-agnostic ansible bootstrap should carry.
 disable_root: false
 ssh_pwauth: false
 users:
@@ -72,6 +90,8 @@ users:
   - name: root
     ssh_authorized_keys:
       - $capi
+packages:
+  - open-vm-tools
 write_files:
   - path: /etc/ssh/sshd_config.d/00-vz-root.conf
     permissions: '0600'
@@ -79,6 +99,7 @@ write_files:
       PermitRootLogin prohibit-password
       PubkeyAuthentication yes
 runcmd:
+  - [ systemctl, enable, --now, vmtoolsd ]
   - [ systemctl, restart, sshd ]
 EOF
   # Lint: a single bad escape silently voids the whole cloud-config — never ship unparsed.
@@ -159,6 +180,11 @@ create_vm() {
 
   log "cloning golden image -> $NAME.vmdk"
   esxi "mkdir -p $DATASTORE/$NAME && vmkfstools -i $BASE_VMDK -d thin $DATASTORE/$NAME/$NAME.vmdk" >/dev/null
+
+  if [ -n "$DISK" ]; then
+    log "growing root disk to $DISK (cloud-init growpart extends root on first boot)"
+    esxi "vmkfstools -X $DISK $DATASTORE/$NAME/$NAME.vmdk" >/dev/null
+  fi
 
   log "writing VMX"
   write_vmx "$NAME"
