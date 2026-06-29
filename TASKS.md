@@ -84,10 +84,12 @@ repo**, and all disappear on Rocky.
 - [ ] Retire the Alpine host once migrated (it was only ever the small-ISO ESXi
       bootstrap host).
 
-## 4. Update the front door
+## 4. Update the front door — DONE
 
-- [ ] `README.md` still documents the 2.x (Ansible/`runch`) workflow. Point it at
-      v3 (`vz validate/apply/ps/diff`, Quadlet) and the `fleet.example/` layout.
+- [x] `README.md` now documents v3: invariants, the `fleet.example/` layout, the
+      `bootstrap.sh → recipe.sh → vz validate/apply/ps/diff` workflow, the
+      validated manifest subset, and Rocky 9-only nodes. The 2.x Ansible/`runch`
+      workflow and RockyLinux 8 bootstrap are gone. No lab IPs/hostnames (public).
 
 ## Smaller follow-ups / known limitations
 
