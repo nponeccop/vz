@@ -1,12 +1,13 @@
 ---
-# Make a fresh Rocky node manageable by vzmaster: a deploy user with passwordless
-# sudo and the deploy key, plus EPEL for later management tooling.
-# Connects as root (the handoff contract guarantees root + key); idempotent.
+# Make a fresh Rocky 9 node vz-apply-ready (v3):
+#   - a deploy user (named after the operator) with passwordless sudo + the key
+#   - the container runtime: podman + skopeo (stock appstream, no third-party repos)
+#   - linger, so rootless pods survive logout AND come back on reboot
+# Connects as root (the handoff contract guarantees root + key). Idempotent.
 - hosts: all
   remote_user: root
   vars:
-    vzexec:
-      user: "{{ local_user.stdout }}"
+    deploy_user: "{{ local_user.stdout }}"
   pre_tasks:
     - name: identify the operator running the deploy
       delegate_to: localhost
@@ -18,31 +19,40 @@
     - name: ping the node
       ansible.builtin.ping:
 
-    - name: enable EPEL (provides management tooling like jshon)
-      ansible.builtin.dnf:
-        name: epel-release
-        state: present
-
-    - name: SELinux python bindings (for selinux-aware modules)
+    - name: SELinux python bindings (so the file/key modules can set contexts)
       ansible.builtin.dnf:
         name: python3-libselinux
         state: present
 
+    - name: container runtime — the node runs and loads images with these
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - skopeo
+        state: present
+
     - name: create the deploy user in the wheel group
       ansible.builtin.user:
-        name: "{{ vzexec.user }}"
+        name: "{{ deploy_user }}"
         state: present
         groups: wheel
         append: true
 
     - name: authorize the deploy key for the deploy user
       ansible.posix.authorized_key:
-        user: "{{ vzexec.user }}"
+        user: "{{ deploy_user }}"
         key: "{{ lookup('file', 'ssh.pub') }}"
 
     - name: authorize the deploy key for root
       ansible.posix.authorized_key:
         user: root
         key: "{{ lookup('file', 'ssh.pub') }}"
+
+    - name: enable linger so rootless pods persist past logout and across reboot
+      # Without this, closing the `vz apply` SSH session SIGKILLs the pod, and it
+      # will not start on boot. The marker file makes this idempotent.
+      ansible.builtin.command: loginctl enable-linger {{ deploy_user }}
+      args:
+        creates: "/var/lib/systemd/linger/{{ deploy_user }}"
   roles:
     - mivok0.sudo
