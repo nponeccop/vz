@@ -1,0 +1,16 @@
+---
+# Apply the fleet's desired state to the nodes — the v3 executor.
+#
+# This is driven by `vz apply`, which validates the fleet, then generates an
+# inventory (from groups.yaml) and per-host extra-vars (pod_name/manifest/
+# images/ports) and invokes:
+#
+#   ansible-playbook -i <generated-inventory> deploy.yaml
+#
+# Each host's pod is described by host vars set in the generated inventory, so a
+# single play applies the whole fleet. Connects as the deploy user (the operator
+# name created by bootstrap); rootless Podman + linger do the rest.
+- hosts: all
+  gather_facts: true
+  roles:
+    - podman-pod

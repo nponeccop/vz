@@ -1,123 +1,144 @@
 # vz v3 — remaining tasks
 
-The v3 build order is **functionally complete** (see [`SPEC-v3.md`](SPEC-v3.md)):
-desired state in git, `vzbuild oci` image wrap, `vz apply`, `vz ps`/`vz diff`,
-and Quadlet boot units are all implemented in `vztool/` + `future/vzbuild/oci.sh`
-and verified end-to-end on a Rocky 9 node (build → push → run → reboot-survives).
+The v3 model is **proven end-to-end on a clean Rocky 9 node** (bootstrap → build →
+`vz apply` → localhost colocation → external job round-trip → reboot-survives).
+See [`SPEC-v3.md`](SPEC-v3.md) for the design.
 
-What is left is hardening and the real migration. Roughly in priority order.
+## Direction (decided 2026-06-29) — Ansible is the first-class executor
 
-## 1. Migrate the real workload (the actual proof)
+The fleet plane was pivoted to **"B": the desired state *is* Ansible.** The old
+`vz apply` shelled out to hand-rolled `ssh`/`scp`/`podman image scp`, which was a
+regression from the core paradigm (SSH is the only control channel; Ansible is the
+universal executor across *all* of the operator's projects). Now:
 
-The production shape is **gearmand + a node.js worker in one pod, talking over
-`localhost`** (`hostNetwork: true`), under rootless Podman.
+- **`vz apply` is a thin wrapper** (`vztool/src/apply.ts`): it validates the fleet,
+  generates a YAML inventory (per-host `pod_name`/`pod_manifest`/`pod_images`/
+  `pod_ports`), and runs `ansible-playbook deploy.yaml` against the `podman-pod`
+  role. v2 did exactly this (`vzmaster.sh` → `ansible-playbook`); v3 restores it.
+- **`vztool` keeps only its two unique jobs**: the **validator** (loud rejection of
+  unsupported k8s fields — Ansible won't do this) and the diagnostic **`vz diff`**.
+- The Ansible tree is **unified with bootstrap**: `bootstrap/` was renamed
+  `ansible/` (one `ansible.cfg`, one `roles/`, one `ssh.pub`); it now holds
+  `bootstrap.yaml` + `deploy.yaml` + `roles/{mivok0.sudo,podman-pod}`.
 
-**Proven (demo) — the model carries the workload:**
+**Target model: one validated k8s-subset manifest, two executors.**
 
-- [x] node.js runtime through the whole vz pipeline: assembled a node rootfs
-      (binary + `ldd` libs), `oci.sh base/app`, `vz apply`, served HTTP on the
-      host's port via `hostNetwork`.
-- [x] Two-container pod (gearmand + node.js worker using the **abraxas** gearman
-      lib) deployed via `vz apply`; the worker reached gearmand on `127.0.0.1`
-      (gearmand logged the loopback connection; worker logged an ECHO round-trip).
-- [x] Full job round-trip: `vzreverse` job processed in-pod, **and** submitted
-      from an external client on the build host over the network
-      (scheduler → gearmand → in-pod worker → result). This is the real arch.
+| | Executor | Control plane | Posture |
+|---|---|---|---|
+| dev/lab | `kubernetes.core.k8s` → **k3s** | real, bulky | insecure OK |
+| staging/prod | `podman_play(quadlet)` over **SSH** (Ansible as "kubelet-by-SSH") | none — daemonless | lean, no attackable plane |
 
-**Proven (cont.):**
+The validator is **one rule-set, two hats**: a continuous lint over the desired-state
+repo *and* the CICD promotion gate. Inadmissible (prod-unhonorable) config is flagged
+loudly, never silently dropped.
 
-- [x] **gearmand minified the vz way (153MB → 21MB)** and verified in the pod
-      (worker connects over localhost, master job round-trips). Done via the
-      *supported same-system flow*: install gearmand on the Rocky build host →
-      strace it against the host's own `/` → `strace-spec.sh <parsed> /` →
-      rsync `from-spec` → `oci.sh base`. The whole anti-fraud pod is now vz-built.
+**Zero-trust gate for any future feature.** A new function is added only if
+compromising vz's own control-plane infra yields nothing: registry → none today
+(`podman image scp` over SSH from the offline control plane already is zero-trust);
+state store → signed git + (later) sealed/at-rest-encrypted secrets.
 
-  Gotchas worth remembering:
-  - The vzbuild minifier is **same-system only** — install + trace + build on
-    one host with `ROOT=/`. Tracing an *isolated/foreign rootfs* (e.g. a pulled
-    Debian image via chroot) is NOT supported: `dir-links.js`'s host-side
-    resolution and `strace-spec.sh`'s hardcoded `/lib /lib64 /etc` finds both
-    assume the traced system IS the build host.
-  - gearmand on Rocky 9 needs **EPEL + CRB** (`gearmand` is in EPEL but pulls
-    `libmemcached.so.11`, provided by `libmemcached-awesome` in CRB).
-  - Two adapters when scripting the flow: drop **transient files** (gearmand's
-    `/var/gearmand.pid`) from the parsed list before `dir-links` (it dies on any
-    non-existent path); and write the rsync `--files-from` to a **real file**,
-    not a `<(process substitution)`, because `sudo rsync` can't read the caller's
-    `/dev/fd`.
+## A. Ansible executor (the B pivot) — IN PROGRESS
 
-**Remaining to call production-ready:**
+- [x] `podman-pod` role: guarded `podman image scp` (skips images whose id already
+      matches the node), `ansible.builtin.copy` manifest, `podman_play state: quadlet`
+      to generate the `.kube` unit, `systemd_service scope: user` (re)start,
+      `ansible.posix.firewalld` for declared ports.
+- [x] `vz apply` rewritten as the inventory-generating wrapper; `buildInventory`
+      unit-tested. Typecheck + 29 tests green.
+- [x] Proven on the lab node: first run `ok=10 changed=2` (one-time — `podman_play`
+      replaced the old hand-rolled `.kube`, triggering a restart; the guarded image
+      scp correctly **skipped** both already-present images).
+- [x] Full convergence confirmed: second run `ok=10 changed=0` (idempotent no-op).
+- [ ] Migrate `vz ps`/`vz diff` query path off bespoke `state.ts` SSH? (Likely keep —
+      the typed diff is the product; it is not Ansible's job.)
+- [ ] Drop now-dead `vztool/src/unit.ts` + its test (`podman_play` generates the
+      `.kube`; vz no longer owns that format).
+- [ ] Silence the `INJECT_FACTS_AS_VARS` deprecation: use `ansible_facts['user_dir'|
+      'user_id'|'user_uid']` instead of the bare `ansible_*` vars (also lets the
+      `id -u` task be dropped — `ansible_facts.user_uid` gives the XDG uid).
 
-- [ ] Use the **actual production worker source** (the bulk DNS resolver), not
-      the demo `vzreverse`.
+## B. kubectl compatibility / dev k3s target
+
+- [ ] Apply the **same** manifest to a dev k3s via `kubernetes.core.k8s` — prove the
+      two-target claim with one artifact.
+- [ ] Bring vz verbs/manifest "as close to kubectl as feasible" so k8s features can
+      be added compatibly.
+
+## C. Build & minify on k3s (control-plane-side k8s)
+
+- [ ] Run build/minification as k8s **Jobs** on the dev k3s (ephemeral build pods;
+      reproducible/CI-able). The minifier is currently host-bound (`sudo rsync`,
+      `ROOT=/`) — containerizing it as a privileged build Job is the real lift.
+
+## 1. The real workload — production-ready, blocked externally
+
+The production shape (gearmand + node.js worker in one pod over `localhost`,
+`hostNetwork: true`, rootless Podman) is fully proven. The DNS-resolver worker's
+config is **baked into the image**, so no secrets machinery is needed to ship it.
+
+- [x] node.js runtime through the whole pipeline; two-container pod via `vz apply`;
+      worker reaches gearmand on `127.0.0.1`; full external job round-trip
+      (scheduler → gearmand → in-pod worker → result).
+- [x] gearmand minified the vz way (153MB → 21MB), verified in the pod.
+- [ ] **Cutover is waiting on the prod environment getting a new server** (external,
+      unrelated to vz). Use the real bulk-DNS-resolver worker source at cutover.
 - [ ] Optionally trim the node base the same way.
-- [ ] Promote the demo to a committable example (worker.js + 2-container pod) in
-      `fleet.example/`, if useful — currently throwaway in `/tmp`.
 
-## 2. Make bootstrap v3-aware — DONE
+  Minifier gotchas worth remembering:
+  - Same-system only — install + trace + build on one host with `ROOT=/`. Tracing a
+    foreign rootfs is unsupported (`dir-links.js` host-side resolution and
+    `strace-spec.sh` hardcoded `/lib /lib64 /etc` finds assume traced == build host).
+  - gearmand on Rocky 9 needs **EPEL + CRB** (pulls `libmemcached.so.11` from
+    `libmemcached-awesome` in CRB).
+  - Drop **transient files** (gearmand's `/var/gearmand.pid`) before `dir-links`;
+    write the rsync `--files-from` to a **real file**, not `<(process substitution)`
+    (`sudo rsync` can't read the caller's `/dev/fd`).
 
-`bootstrap/bootstrap.yaml` now makes a fresh Rocky 9 node `vz apply`-ready via
-`./bootstrap.sh <ip>` (connects as root, idempotent):
+## 2. Bootstrap — DONE
 
-- [x] deploy user + passwordless sudo + key authorization (existing)
-- [x] `dnf install podman skopeo` (node only runs/loads; `buildah` is build-host only)
-- [x] `loginctl enable-linger <deploy-user>` (idempotent via the linger marker)
-
-Validated on the clean Vultr Rocky 9 node: a re-run reports `ok=10 changed=0`,
-i.e. it reproduces exactly the state proven by hand. Firewall is intentionally
-not here — `vz apply` opens declared manifest ports (desired-state-driven).
+`ansible/bootstrap.yaml` makes a fresh Rocky 9 node `vz apply`-ready via
+`./bootstrap.sh <ip>` (deploy user + passwordless sudo + key, `podman`/`skopeo`,
+`loginctl enable-linger`). Validated from scratch on the reinstalled Vultr node:
+`ok=10 changed=5`; the deploy user confirmed `vz apply`-ready.
 
 ## 3. Rocky-only build/control host
 
-`vz apply` runs on a host with a local rootless Podman store. Today that is the
-Alpine bootstrap host, which needed workarounds (vfs storage driver, manual
-`/etc/subuid`+`/etc/subgid`, a `XDG_RUNTIME_DIR` export in `~/.profile`) because
-its kernel has no `/dev/fuse`/overlay and no logind session. Its root disk is
-also tiny (~2.7G), and vfs duplicates every layer, so the podman graphroot was
-moved to a tmpfs (`/tmp`, RAM-backed) to fit a glibc gearmand image — fine while
-RAM is free, but it evaporates on reboot. These are all **host-local, not in the
-repo**, and all disappear on Rocky.
+`vz apply` runs on a host with a local rootless Podman store + Ansible. Today that
+is the Alpine host, which needed workarounds (vfs driver, manual `/etc/subuid`+
+`subgid`, `XDG_RUNTIME_DIR` export, graphroot on tmpfs) — all host-local, none in
+the repo, all gone on Rocky. The control plane is meant to be heavy/offline (a dev
+VM, 4–8 GB), and may itself run k3s (see C).
 
-- [ ] Stand up the build/control host on Rocky 9 (overlay, subuid, logind all
-      work out of the box — none of the Alpine workarounds needed).
-- [ ] Capture its setup in a playbook so it is reproducible.
-- [ ] Retire the Alpine host once migrated (it was only ever the small-ISO ESXi
-      bootstrap host).
-
-## 4. Update the front door — DONE
-
-- [x] `README.md` now documents v3: invariants, the `fleet.example/` layout, the
-      `bootstrap.sh → recipe.sh → vz validate/apply/ps/diff` workflow, the
-      validated manifest subset, and Rocky 9-only nodes. The 2.x Ansible/`runch`
-      workflow and RockyLinux 8 bootstrap are gone. No lab IPs/hostnames (public).
+- [ ] Stand up the build/control host on Rocky 9; capture its setup in a playbook;
+      retire the Alpine host.
 
 ## Smaller follow-ups / known limitations
 
-- [ ] `vz apply` and `vz ps`/`vz diff` query hosts **serially**; parallelize per
-      host for larger fleets.
+- [x] ~~Serial host queries in `vz apply`~~ — Ansible forks parallelize the apply.
+      (`vz ps`/`vz diff` still query serially in `state.ts`.)
 - [ ] `vz diff` checks the running pod, not whether the Quadlet `.kube` unit is
-      installed/enabled. A node could be running-but-not-reboot-safe and look
-      converged. Consider verifying the unit too.
-- [ ] **Schema: one pod per host.** A host belongs to exactly one group, which
-      runs one pod. Multiple pods per host would need a deliberate schema change
-      (a list of pods per group) — not an accident.
-- [ ] **Image transfer is whole-image** (`podman image scp`); the 2-layer split
-      buys no WAN delta. If base sizes / deploy frequency ever make this bite,
-      revisit the ephemeral SSH-tunnelled registry (rejected-alternatives note in
-      `SPEC-v3.md`).
-- [ ] **Firewall port management is additive only** — `vz apply` opens declared
-      manifest ports but does not close ports removed from the manifest. Full
-      reconciliation (close-stale) is a follow-up; `vz diff` could also report
-      firewall drift.
-- [ ] No design yet for **secrets / per-node config injection** into pods.
-- [ ] `vztool` is run via `node src/*.ts` (node 24 strips types). No build/install
-      step or `PATH` shims yet; add if it should be invokable as bare `vz-*`.
+      installed/enabled — a node could be running-but-not-reboot-safe and look
+      converged.
+- [ ] **Schema: one pod per host** — multiple pods per host would need a deliberate
+      schema change (list of pods per group), not an accident.
+- [ ] **Image transfer is whole-image** (`podman image scp`); revisit the ephemeral
+      registry only if base sizes / deploy cadence make WAN cost bite.
+- [ ] **Firewall close-stale**: the `firewalld` module *can* now remove ports
+      (`state: disabled`), so full reconciliation is newly cheap — `vz apply` still
+      only opens declared ports. Have the role close ports absent from the manifest;
+      `vz diff` could report firewall drift.
+- [x] ~~Secrets design~~ — **decided**: keyless nodes, **build-time / control-plane
+      decryption** (ansible-vault/sops on the offline control plane while rendering
+      the image/unit). Deferred until a workload needs it; a node-side `secretsd`
+      for per-access audit is a later want.
+- [ ] `vztool` is run via `node src/*.ts`. No build/install or `PATH` shims yet; add
+      if it should be invokable as bare `vz-*`.
 
 ## Done (for reference)
 
 - v3 spec + transport decision (`podman image scp`, with evidence).
 - Manifest validator + node groups (`vztool/src/{schema,groups,validate}.ts`).
 - `vzbuild oci.sh` (base/app/export), verified.
-- `vz apply` (`vztool/src/{plan,apply,unit}.ts`).
 - `vz ps` / `vz diff` (`vztool/src/{state,ps,diff}.ts`).
 - Quadlet boot units; reboot survival verified on a real reboot.
+- README rewritten for v3.

@@ -60,7 +60,7 @@ Workflow
 SSH key — e.g. straight from an activation email):
 
 ```shell
-cd bootstrap && ./bootstrap.sh {server-ip}
+cd ansible && ./bootstrap.sh {server-ip}
 ```
 
 This creates a deploy user named after you with passwordless `sudo`, installs
@@ -83,11 +83,16 @@ node vztool/src/ps.ts       fleet.example/groups.yaml   # fleet-wide actual runn
 node vztool/src/diff.ts     fleet.example/groups.yaml   # desired (git) minus actual; exit 1 on drift
 ```
 
-`vz apply` for each host: `podman image scp`s the pod's images over SSH (no
-registry), copies the manifest, installs it as a rootless Quadlet `.kube` unit
-(so the pod restarts on reboot), and opens each declared `containerPort` in the
-node firewall. `vz diff` is the product surface — it tells you a node rebooted
-and came back empty, or that a deploy half-applied.
+`vz apply` is a thin wrapper: it validates the fleet, generates an Ansible
+inventory from `groups.yaml`, and runs `ansible/deploy.yaml` (the `podman-pod`
+role). The role, per host, `podman image scp`s the pod's images over SSH (no
+registry, and skips images already present), installs the manifest as a rootless
+Quadlet `.kube` unit (so the pod restarts on reboot), (re)starts it via the user
+systemd manager, and opens each declared `containerPort` in firewalld — all
+idempotent, with real changed/ok reporting. Ansible is the one executor across
+bootstrap and deploy (unified under [`ansible/`](ansible/)). `vz diff` is the
+product surface — it tells you a node rebooted and came back empty, or that a
+deploy half-applied.
 
 The supported manifest subset
 ------------------------------

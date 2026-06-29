@@ -1,86 +1,67 @@
 #!/usr/bin/env node
 // vz-apply — make the fleet's desired state actual.
 //
-// For each host in each group: push the pod's images with `podman image scp`
-// (whole-image transfer over SSH — see SPEC-v3.md), then install the manifest
-// as a rootless Quadlet `.kube` unit and (re)start it via the user systemd
-// manager. systemd owns the pod, so it also comes back on reboot.
+// Thin wrapper over Ansible (the v3 executor). It validates the fleet, expands
+// it into one task per host, generates a YAML inventory carrying each host's pod
+// vars (name / manifest / images / ports), and invokes the `podman-pod` role:
 //
-// Usage: vz-apply <groups.yaml> [--user <name>] [--dry-run]
+//   ansible-playbook -i <generated-inventory> deploy.yaml
+//
+// The role does the idempotent work (guarded `podman image scp`, Quadlet unit,
+// user systemd, firewalld) and reports real changed/ok — the deploy visibility
+// the old hand-rolled ssh/scp path lacked. SSH is the only channel; nodes run no
+// vz daemon.
+//
+// Usage: vz-apply <groups.yaml> [--user <name>] [--check]
 
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { stringify } from "yaml";
 import { loadPlan, type HostTask } from "./plan.ts";
-import { kubeUnit, serviceName } from "./unit.ts";
 
-const SSH_OPTS = ["-o", "StrictHostKeyChecking=accept-new"];
-// rootless Quadlet dir, relative to the remote user's home
-const REMOTE_DIR = ".config/containers/systemd";
+const here = dirname(fileURLToPath(import.meta.url));
+// the unified Ansible home (ansible.cfg + roles/ + deploy.yaml live here)
+const ANSIBLE_DIR = resolve(here, "../../ansible");
 
 interface Opts {
   groupsPath: string;
   user: string;
-  dryRun: boolean;
+  check: boolean;
 }
 
 function parseArgs(argv: string[]): Opts {
   let user = process.env.USER ?? "root";
-  let dryRun = false;
+  let check = false;
   const positional: string[] = [];
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--dry-run") dryRun = true;
+    if (a === "--check" || a === "--dry-run") check = true;
     else if (a === "--user") user = argv[++i];
     else if (a.startsWith("--")) throw new Error(`unknown flag: ${a}`);
     else positional.push(a);
   }
-  if (positional.length !== 1) throw new Error("usage: vz-apply <groups.yaml> [--user <name>] [--dry-run]");
-  return { groupsPath: positional[0], user, dryRun };
+  if (positional.length !== 1) throw new Error("usage: vz-apply <groups.yaml> [--user <name>] [--check]");
+  return { groupsPath: positional[0], user, check };
 }
 
-function run(cmd: string, args: string[], dryRun: boolean): void {
-  console.log(`  $ ${cmd} ${args.join(" ")}`);
-  if (!dryRun) execFileSync(cmd, args, { stdio: "inherit" });
-}
-
-function applyHost(t: HostTask, dryRun: boolean): void {
-  const target = `${t.user}@${t.host}`;
-  console.log(`\n# ${t.group} -> ${target}  (pod ${t.podName})`);
-
-  for (const image of t.images) {
-    // trailing :: keeps the same image name on the remote
-    run("podman", ["image", "scp", image, `${target}::`], dryRun);
+// One YAML inventory for the whole fleet: each host carries the vars the
+// podman-pod role consumes. Structured vars (image list, port dicts) are why
+// this is a YAML inventory and not INI.
+export function buildInventory(tasks: HostTask[]): string {
+  const hosts: Record<string, unknown> = {};
+  for (const t of tasks) {
+    hosts[t.host] = {
+      ansible_user: t.user,
+      pod_name: t.podName,
+      pod_manifest: t.manifestPath,
+      pod_images: t.images,
+      pod_ports: t.ports.map((p) => ({ port: p.port, protocol: p.protocol })),
+    };
   }
-
-  const remoteYaml = `${REMOTE_DIR}/${t.podName}.yaml`;
-  const remoteKube = `${REMOTE_DIR}/${t.podName}.kube`;
-  run("ssh", [...SSH_OPTS, target, "mkdir", "-p", REMOTE_DIR], dryRun);
-  run("scp", [...SSH_OPTS, t.manifestPath, `${target}:${remoteYaml}`], dryRun);
-
-  // install the Quadlet .kube unit beside the manifest
-  const kubePath = join(tmpdir(), `vz-${t.podName}.kube`);
-  if (!dryRun) writeFileSync(kubePath, kubeUnit(t.podName));
-  run("scp", [...SSH_OPTS, kubePath, `${target}:${remoteKube}`], dryRun);
-
-  // regenerate units and (re)start via the user manager; XDG_RUNTIME_DIR is set
-  // because `systemctl --user` over a non-login SSH session has no bus otherwise
-  const svc = serviceName(t.podName);
-  const remoteCmd = `export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user daemon-reload && systemctl --user restart ${svc}`;
-  run("ssh", [...SSH_OPTS, target, remoteCmd], dryRun);
-
-  // open the pod's declared ports in the node firewall (desired state drives the
-  // firewall — no manual port opening). hostNetwork means containerPort = host port.
-  if (t.ports.length) {
-    const rules = t.ports.map((p) => `${p.port}/${p.protocol}`);
-    const adds = rules.map((r) => `sudo firewall-cmd --permanent --add-port=${r} >/dev/null`).join("; ");
-    const fwCmd =
-      `if command -v firewall-cmd >/dev/null && sudo firewall-cmd --state >/dev/null 2>&1; then ` +
-      `${adds}; sudo firewall-cmd --reload >/dev/null; echo "firewall: opened ${rules.join(" ")}"; ` +
-      `else echo "firewall: no firewalld, skipping ${rules.join(" ")}"; fi`;
-    run("ssh", [...SSH_OPTS, target, fwCmd], dryRun);
-  }
+  return stringify({ all: { hosts } });
 }
 
 function main(argv: string[]): number {
@@ -100,21 +81,22 @@ function main(argv: string[]): number {
     return 1;
   }
 
-  console.log(`apply: ${tasks.length} host(s)${opts.dryRun ? " [dry-run]" : ""}`);
-  let failed = 0;
-  for (const t of tasks) {
-    try {
-      applyHost(t, opts.dryRun);
-    } catch (e) {
-      failed++;
-      console.error(`  ! ${t.user}@${t.host}: ${(e as Error).message}`);
-    }
-  }
-  if (failed) {
-    console.error(`\napply: ${failed}/${tasks.length} host(s) failed`);
+  const invDir = mkdtempSync(join(tmpdir(), "vz-inv-"));
+  const invPath = join(invDir, "inventory.yml");
+  writeFileSync(invPath, buildInventory(tasks));
+
+  const args = ["-i", invPath, "deploy.yaml"];
+  if (opts.check) args.push("--check");
+  console.log(`apply: ${tasks.length} host(s) via ansible-playbook${opts.check ? " [--check]" : ""}`);
+  console.log(`  inventory: ${invPath}`);
+  console.log(`  $ (cd ${ANSIBLE_DIR} && ansible-playbook ${args.join(" ")})\n`);
+
+  try {
+    execFileSync("ansible-playbook", args, { stdio: "inherit", cwd: ANSIBLE_DIR });
+  } catch {
+    console.error("\napply: ansible-playbook reported failures");
     return 1;
   }
-  console.log(`\napply: ok (${tasks.length} host(s))`);
   return 0;
 }
 

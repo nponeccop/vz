@@ -1,0 +1,105 @@
+---
+# podman-pod — apply one pod manifest to a rootless Podman node over SSH.
+#
+# This is the fleet executor: the Ansible realization of what `vz apply` used to
+# do by hand-rolled ssh/scp. It is idempotent and reports real changed/ok, which
+# is the deploy-visibility the hand-rolled path threw away.
+#
+# Expected vars (the `vz apply` wrapper passes these as extra-vars; see deploy.yaml):
+#   pod_name        : metadata.name of the pod (e.g. "antifraud")
+#   pod_manifest    : control-host path to the validated k8s-subset Pod YAML
+#   pod_images      : list of localhost/... image refs the pod uses
+#   pod_ports       : list of {port:int, protocol:"tcp"|"udp"} to open in firewalld
+#
+# Images are transferred whole with `podman image scp` (no registry — see
+# SPEC-v3.md), guarded by a remote/local image-id compare so an unchanged image
+# is not re-shipped. The manifest is installed as a rootless Quadlet `.kube` unit
+# so systemd owns the pod and brings it back on reboot.
+
+- name: rootless Quadlet directory exists
+  ansible.builtin.file:
+    path: "{{ quadlet_dir }}"
+    state: directory
+    mode: "0755"
+  vars:
+    quadlet_dir: "{{ ansible_user_dir }}/.config/containers/systemd"
+
+- name: local image ids (on the control host)
+  delegate_to: localhost
+  containers.podman.podman_image_info:
+    name: "{{ item }}"
+  loop: "{{ pod_images }}"
+  register: local_img
+  changed_when: false
+
+- name: remote image ids (on the node)
+  containers.podman.podman_image_info:
+    name: "{{ item }}"
+  loop: "{{ pod_images }}"
+  register: remote_img
+  changed_when: false
+
+- name: push images whose id differs from the node (podman image scp over SSH)
+  delegate_to: localhost
+  ansible.builtin.command:
+    cmd: "podman image scp {{ item.0 }} {{ ansible_user_id }}@{{ inventory_hostname }}::"
+  loop: "{{ pod_images | zip(local_img.results, remote_img.results) | list }}"
+  loop_control:
+    label: "{{ item.0 }}"
+  vars:
+    local_id: "{{ item.1.images[0].Id | default('') }}"
+    remote_id: "{{ item.2.images[0].Id | default('') }}"
+  when: local_id != remote_id
+  register: img_push
+  changed_when: true
+
+- name: install the pod manifest beside the unit
+  ansible.builtin.copy:
+    src: "{{ pod_manifest }}"
+    dest: "{{ ansible_user_dir }}/.config/containers/systemd/{{ pod_name }}.yaml"
+    mode: "0644"
+  register: manifest
+
+- name: generate the Quadlet .kube unit (references the manifest by path)
+  containers.podman.podman_play:
+    kube_file: "{{ ansible_user_dir }}/.config/containers/systemd/{{ pod_name }}.yaml"
+    state: quadlet
+    quadlet_filename: "{{ pod_name }}"
+    quadlet_dir: "{{ ansible_user_dir }}/.config/containers/systemd"
+  register: quadlet
+
+- name: resolve the user runtime dir (for systemctl --user over non-login SSH)
+  ansible.builtin.command: id -u
+  register: uid
+  changed_when: false
+
+- name: (re)start the pod via the user systemd manager
+  ansible.builtin.systemd_service:
+    name: "{{ pod_name }}.service"
+    scope: user
+    enabled: true
+    daemon_reload: true
+    # restart only when something actually changed; otherwise just ensure running
+    state: "{{ 'restarted' if (img_push is changed or manifest is changed or quadlet is changed) else 'started' }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ uid.stdout }}"
+
+# --- firewall: declared pod ports drive firewalld (desired state, not manual) ---
+- name: gather service facts (is firewalld running?)
+  ansible.builtin.service_facts:
+  when: pod_ports | default([]) | length > 0
+
+- name: open declared pod ports in firewalld
+  become: true
+  ansible.posix.firewalld:
+    port: "{{ item.port }}/{{ item.protocol }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ pod_ports | default([]) }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.protocol }}"
+  when:
+    - pod_ports | default([]) | length > 0
+    - "'firewalld.service' in (ansible_facts.services | default({}))"
+    - ansible_facts.services['firewalld.service'].state == 'running'
