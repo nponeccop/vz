@@ -54,21 +54,18 @@ The production shape is **gearmand + a node.js worker in one pod, talking over
 - [ ] Promote the demo to a committable example (worker.js + 2-container pod) in
       `fleet.example/`, if useful — currently throwaway in `/tmp`.
 
-## 2. Make bootstrap v3-aware
+## 2. Make bootstrap v3-aware — DONE
 
-A freshly bootstrapped node must be `vz apply`-ready without manual steps. The
-exact sequence is now **proven on a clean Vultr Rocky 9 node** (run as root) and
-just needs to be codified into a script/playbook in `bootstrap/`:
+`bootstrap/bootstrap.yaml` now makes a fresh Rocky 9 node `vz apply`-ready via
+`./bootstrap.sh <ip>` (connects as root, idempotent):
 
-- [ ] create the deploy user + passwordless sudo; copy `root`'s `authorized_keys`
-      so the same key authenticates the user
-- [ ] `dnf install -y podman skopeo` (node only runs/loads; `buildah` is needed
-      only on the *build* host)
-- [ ] `loginctl enable-linger <deploy-user>` — **required**, or rootless pods are
-      SIGKILLed when the deploy SSH session ends, and they will not start on boot
+- [x] deploy user + passwordless sudo + key authorization (existing)
+- [x] `dnf install podman skopeo` (node only runs/loads; `buildah` is build-host only)
+- [x] `loginctl enable-linger <deploy-user>` (idempotent via the linger marker)
 
-Note: `vz apply` itself now opens declared manifest ports via firewalld, so the
-firewall is *not* a bootstrap concern — it is desired-state-driven.
+Validated on the clean Vultr Rocky 9 node: a re-run reports `ok=10 changed=0`,
+i.e. it reproduces exactly the state proven by hand. Firewall is intentionally
+not here — `vz apply` opens declared manifest ports (desired-state-driven).
 
 ## 3. Rocky-only build/control host
 
