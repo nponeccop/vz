@@ -57,10 +57,16 @@ state store → signed git + (later) sealed/at-rest-encrypted secrets.
       'user_id'|'user_uid']` instead of the bare `ansible_*` vars (also lets the
       `id -u` task be dropped — `ansible_facts.user_uid` gives the XDG uid).
 
-## B. kubectl compatibility / dev k3s target
+## B. kubectl compatibility / dev k3s target — PROVEN, codification pending
 
-- [ ] Apply the **same** manifest to a dev k3s via `kubernetes.core.k8s` — prove the
-      two-target claim with one artifact.
+- [x] **Two-target claim proven with one artifact.** The *same* `antifraud.yaml`
+      runs on (1) daemonless podman over Ansible-SSH (prod, Vultr node) and (2) k3s
+      on the ESXi build host: `podman save | k3s ctr images import` the localhost
+      images, `kubectl apply` the manifest → pod `2/2 Running`, worker reached
+      gearmand on `127.0.0.1`, external job round-trip OK.
+- [ ] Codify the dev executor as a `kubernetes.core.k8s` play (image import task +
+      apply), the dev-side analogue of `deploy.yaml` — currently done by hand
+      (`k3s ctr images import` + `k3s kubectl apply`).
 - [ ] Bring vz verbs/manifest "as close to kubectl as feasible" so k8s features can
       be added compatibly.
 
@@ -101,16 +107,20 @@ config is **baked into the image**, so no secrets machinery is needed to ship it
 `loginctl enable-linger`). Validated from scratch on the reinstalled Vultr node:
 `ok=10 changed=5`; the deploy user confirmed `vz apply`-ready.
 
-## 3. Rocky-only build/control host
+## 3. Rocky-only build/control host — IN PROGRESS
 
-`vz apply` runs on a host with a local rootless Podman store + Ansible. Today that
-is the Alpine host, which needed workarounds (vfs driver, manual `/etc/subuid`+
-`subgid`, `XDG_RUNTIME_DIR` export, graphroot on tmpfs) — all host-local, none in
-the repo, all gone on Rocky. The control plane is meant to be heavy/offline (a dev
-VM, 4–8 GB), and may itself run k3s (see C).
+The decision: the build host becomes the **full control host** (ansible + git
+desired-state + node/vztool + podman/buildah store + k3s). `vz apply` runs from it.
+Alpine stays for now as the NAT/DHCP gateway and where the agent runs.
 
-- [ ] Stand up the build/control host on Rocky 9; capture its setup in a playbook;
-      retire the Alpine host.
+- [x] `buildhost` VM created on ESXi (Rocky 9.8, 4GB/2cpu, 40G via `DISK=`),
+      bootstrapped (`ok=10 changed=5`), k3s installed (node Ready, v1.36.2+k3s1).
+- [ ] Codify the build-host control stack in `platform/ovh-esxi/buildhost.yaml`
+      (buildah, git, node for vztool, ansible-core + collections, k3s, the vz repo)
+      so it is reproducible — done by hand so far (k3s via `get.k3s.io`).
+- [ ] Move the desired-state repo + `vz apply` execution onto the build host.
+- [ ] Retire Alpine: redesign NAT/DHCP off it and **retest the ESXi bootstrap on a
+      secondary clean ESXi host** before decommissioning.
 
 ## Smaller follow-ups / known limitations
 
