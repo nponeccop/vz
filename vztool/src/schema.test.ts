@@ -15,7 +15,7 @@ const goodPod = {
   spec: {
     hostNetwork: true,
     containers: [
-      { name: "gearmand", image: "localhost/gearmand:v3", imagePullPolicy: "Never" },
+      { name: "gearmand", image: "localhost/gearmand:v3", imagePullPolicy: "Never", ports: [{ containerPort: 4730 }] },
       {
         name: "dns-resolver",
         image: "localhost/dns-resolver:v3",
@@ -75,6 +75,15 @@ test("duplicate container names are flagged", () => {
     },
   });
   assert.ok(paths.includes("$.spec.containers[1].name"));
+});
+
+test("a bad port and an unknown port field are rejected", () => {
+  const paths = check({
+    ...goodPod,
+    spec: { containers: [{ name: "x", image: "localhost/x:v3", imagePullPolicy: "Never", ports: [{ containerPort: 99999, hostPort: 8080 }] }] },
+  });
+  assert.ok(paths.includes("$.spec.containers[0].ports[0].containerPort"));
+  assert.ok(paths.includes("$.spec.containers[0].ports[0].hostPort"));
 });
 
 test("an unknown env key is rejected", () => {

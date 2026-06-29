@@ -18,6 +18,8 @@ spec:
     - name: gearmand
       image: localhost/gearmand:v3
       imagePullPolicy: Never
+      ports:
+        - containerPort: 4730  # vz apply opens this in the node firewall
     - name: dns-resolver
       image: localhost/dns-resolver:v3
       imagePullPolicy: Never

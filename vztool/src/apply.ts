@@ -69,6 +69,18 @@ function applyHost(t: HostTask, dryRun: boolean): void {
   const svc = serviceName(t.podName);
   const remoteCmd = `export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user daemon-reload && systemctl --user restart ${svc}`;
   run("ssh", [...SSH_OPTS, target, remoteCmd], dryRun);
+
+  // open the pod's declared ports in the node firewall (desired state drives the
+  // firewall — no manual port opening). hostNetwork means containerPort = host port.
+  if (t.ports.length) {
+    const rules = t.ports.map((p) => `${p.port}/${p.protocol}`);
+    const adds = rules.map((r) => `sudo firewall-cmd --permanent --add-port=${r} >/dev/null`).join("; ");
+    const fwCmd =
+      `if command -v firewall-cmd >/dev/null && sudo firewall-cmd --state >/dev/null 2>&1; then ` +
+      `${adds}; sudo firewall-cmd --reload >/dev/null; echo "firewall: opened ${rules.join(" ")}"; ` +
+      `else echo "firewall: no firewalld, skipping ${rules.join(" ")}"; fi`;
+    run("ssh", [...SSH_OPTS, target, fwCmd], dryRun);
+  }
 }
 
 function main(argv: string[]): number {

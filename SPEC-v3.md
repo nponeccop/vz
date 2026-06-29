@@ -66,6 +66,11 @@ like k8s but silently no-ops 95% of PodSpec. So:
   silent ignore.
 - `imagePullPolicy: Never` is mandatory on every container — vz uses what was
   pushed and must never attempt a registry pull.
+- `ports: [{containerPort, protocol?}]` is **honored, not cosmetic**: `vz apply`
+  opens each declared port in the node's firewall (firewalld). With `hostNetwork`
+  the container port is the host port, so the manifest is the single source of
+  truth for what is reachable — no manual `firewall-cmd`. (Additive today; it
+  does not yet close ports removed from the manifest — see TASKS.)
 
 ## Image distribution — push, not pull
 

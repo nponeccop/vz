@@ -16,6 +16,7 @@ test("loadPlan expands a group into one task per host with the pod's images", ()
     assert.equal(t.user, "andy");
     assert.equal(t.podName, "antifraud");
     assert.deepEqual(t.images, ["localhost/gearmand:v3", "localhost/dns-resolver:v3"]);
+    assert.deepEqual(t.ports, [{ port: 4730, protocol: "tcp" }]);
   }
   assert.deepEqual(tasks.map((t) => t.host).sort(), ["10.10.10.67", "10.10.10.68"]);
 });

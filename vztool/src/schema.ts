@@ -14,9 +14,11 @@ export interface Violation {
 const POD_KEYS = ["apiVersion", "kind", "metadata", "spec"];
 const METADATA_KEYS = ["name", "labels"];
 const SPEC_KEYS = ["hostNetwork", "restartPolicy", "containers"];
-const CONTAINER_KEYS = ["name", "image", "imagePullPolicy", "command", "args", "env"];
+const CONTAINER_KEYS = ["name", "image", "imagePullPolicy", "command", "args", "env", "ports"];
 const ENV_KEYS = ["name", "value"];
+const PORT_KEYS = ["containerPort", "protocol"];
 const RESTART_POLICIES = ["Always", "OnFailure", "Never"];
+const PROTOCOLS = ["TCP", "UDP"];
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
@@ -84,6 +86,27 @@ function validateContainer(c: unknown, path: string, errs: Violation[]): void {
         const ep = `${path}.env[${i}]`;
         if (checkKeys(e, ENV_KEYS, ep, errs) && typeof e.name !== "string") {
           errs.push({ path: `${ep}.name`, msg: "required string" });
+        }
+      });
+    }
+  }
+
+  // ports are honored: vz apply opens them in the node firewall (hostNetwork,
+  // so containerPort is the host port). Not a no-op, so it is validated strictly.
+  if ("ports" in c) {
+    if (!Array.isArray(c.ports)) {
+      errs.push({ path: `${path}.ports`, msg: "must be a list" });
+    } else {
+      c.ports.forEach((p, i) => {
+        const pp = `${path}.ports[${i}]`;
+        if (!checkKeys(p, PORT_KEYS, pp, errs)) return;
+        const cp = (p as any).containerPort;
+        if (typeof cp !== "number" || !Number.isInteger(cp) || cp < 1 || cp > 65535) {
+          errs.push({ path: `${pp}.containerPort`, msg: "required, integer 1-65535" });
+        }
+        const proto = (p as any).protocol;
+        if (proto !== undefined && !PROTOCOLS.includes(proto)) {
+          errs.push({ path: `${pp}.protocol`, msg: `must be one of ${PROTOCOLS.join(", ")}` });
         }
       });
     }
