@@ -56,13 +56,19 @@ The production shape is **gearmand + a node.js worker in one pod, talking over
 
 ## 2. Make bootstrap v3-aware
 
-A freshly bootstrapped node must be `vz apply`-ready without manual steps. These
-were done by hand during bring-up and need to land in the bootstrap playbook
-(`bootstrap/`):
+A freshly bootstrapped node must be `vz apply`-ready without manual steps. The
+exact sequence is now **proven on a clean Vultr Rocky 9 node** (run as root) and
+just needs to be codified into a script/playbook in `bootstrap/`:
 
-- [ ] `dnf install podman skopeo buildah`
+- [ ] create the deploy user + passwordless sudo; copy `root`'s `authorized_keys`
+      so the same key authenticates the user
+- [ ] `dnf install -y podman skopeo` (node only runs/loads; `buildah` is needed
+      only on the *build* host)
 - [ ] `loginctl enable-linger <deploy-user>` — **required**, or rootless pods are
-      SIGKILLed when the deploy SSH session ends, and they will not start on boot.
+      SIGKILLed when the deploy SSH session ends, and they will not start on boot
+
+Note: `vz apply` itself now opens declared manifest ports via firewalld, so the
+firewall is *not* a bootstrap concern — it is desired-state-driven.
 
 ## 3. Rocky-only build/control host
 
@@ -100,6 +106,10 @@ repo**, and all disappear on Rocky.
       buys no WAN delta. If base sizes / deploy frequency ever make this bite,
       revisit the ephemeral SSH-tunnelled registry (rejected-alternatives note in
       `SPEC-v3.md`).
+- [ ] **Firewall port management is additive only** — `vz apply` opens declared
+      manifest ports but does not close ports removed from the manifest. Full
+      reconciliation (close-stale) is a follow-up; `vz diff` could also report
+      firewall drift.
 - [ ] No design yet for **secrets / per-node config injection** into pods.
 - [ ] `vztool` is run via `node src/*.ts` (node 24 strips types). No build/install
       step or `PATH` shims yet; add if it should be invokable as bare `vz-*`.
