@@ -1,0 +1,20 @@
+---
+# Apply the fleet's desired state to the DEV target (k3s) — the dev-side analogue
+# of deploy.yaml. Same generated inventory, same per-host vars (pod_name/manifest/
+# images/ports); only the executor differs:
+#
+#   deploy.yaml      prod  -> podman_play(quadlet) over SSH   (daemonless, no plane)
+#   deploy-k3s.yaml  dev   -> kubernetes.core.k8s -> k3s      (real, bulky, insecure OK)
+#
+# Driven by `vz apply` (dev target): it validates the fleet, generates the
+# inventory + extra-vars, and invokes:
+#
+#   ansible-playbook -i <generated-inventory> deploy-k3s.yaml
+#
+# The single dev host is the build/control host itself (it runs k3s). Images come
+# from that host's rootless Podman store (where `vzbuild` leaves them) and are
+# imported into k3s's containerd; the manifest is applied with kubernetes.core.k8s.
+- hosts: all
+  gather_facts: true
+  roles:
+    - k3s-pod

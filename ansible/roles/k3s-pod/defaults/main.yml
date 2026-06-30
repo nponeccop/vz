@@ -1,0 +1,13 @@
+---
+# kubeconfig the deploy user got from buildhost.yaml (copied from k3s.yaml).
+kubeconfig: "{{ ansible_facts['user_dir'] }}/.kube/config"
+
+# Default namespace for resources that don't pin their own. `kubectl apply` defaults
+# missing namespaces to "default"; kubernetes.core.k8s with an inline definition does
+# not (it errors "Namespace is required"), so we supply the same default explicitly.
+pod_namespace: default
+
+# The validated k8s-subset manifest, read on the control host (where the desired-
+# state repo lives) and applied as-is. from_yaml_all tolerates a multi-doc file;
+# today the schema is one Pod per host.
+pod_def: "{{ lookup('file', pod_manifest) | from_yaml_all | list }}"

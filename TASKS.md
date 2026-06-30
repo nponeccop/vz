@@ -32,10 +32,24 @@ The validator is **one rule-set, two hats**: a continuous lint over the desired-
 repo *and* the CICD promotion gate. Inadmissible (prod-unhonorable) config is flagged
 loudly, never silently dropped.
 
-**Zero-trust gate for any future feature.** A new function is added only if
-compromising vz's own control-plane infra yields nothing: registry → none today
-(`podman image scp` over SSH from the offline control plane already is zero-trust);
-state store → signed git + (later) sealed/at-rest-encrypted secrets.
+**Two planes, two registry answers (resolved 2026-06-30).** Registries are a
+*build-time* convenience and are admissible **on the control node** (it never faces
+the fleet). The **runtime** plane stays registry-less with no inter-node
+communication: nodes receive images only by `podman image scp` over SSH from the
+control plane. "No registry" was always a *runtime/internode* rule, not a
+build-pipeline one — so native k8s build flows (which assume a registry) are fine at
+build time.
+
+**The control node is vz's answer to the registry + etcd.** Instead of always-on,
+network-exposed cluster infra, the trust root is a single control node that is
+(a) mostly **offline**, (b) **NAT-isolated** when offline, and (c) gated by a hardware
+security key with human-in-the-loop confirmation for the deploy SSH identity. The
+ultimate secret is the fleet SSH key — a fleet-wide root-SSH compromise compromises
+the fleet regardless, so that is the boundary worth hardening. This already beats a
+standard exposed-etcd setup. Image **signatures** defend a *different* attack
+(a compromised worker forging/poisoning an image — "worker RCE") and are a later,
+low-priority hardening. State store → signed git + (later) sealed/at-rest-encrypted
+secrets.
 
 ## A. Ansible executor (the B pivot) — IN PROGRESS
 
@@ -64,17 +78,52 @@ state store → signed git + (later) sealed/at-rest-encrypted secrets.
       on the ESXi build host: `podman save | k3s ctr images import` the localhost
       images, `kubectl apply` the manifest → pod `2/2 Running`, worker reached
       gearmand on `127.0.0.1`, external job round-trip OK.
-- [ ] Codify the dev executor as a `kubernetes.core.k8s` play (image import task +
-      apply), the dev-side analogue of `deploy.yaml` — currently done by hand
-      (`k3s ctr images import` + `k3s kubectl apply`).
+- [x] Codified the dev executor as `ansible/deploy-k3s.yaml` (+ `roles/k3s-pod`): a
+      `kubernetes.core.k8s` play, the dev-side analogue of `deploy.yaml`, driven by
+      the *same* generated inventory vars. Imports each image from the rootless
+      podman store into k3s containerd (`podman save | k3s ctr -n k8s.io import`,
+      idempotent via a per-image **id marker** so a manifest-only change skips the
+      import but a same-tag rebuild re-imports), recreates the bare Pod when an
+      image actually changed, then applies the manifest. Proven on the build-host
+      k3s: fresh run `changed=2`, re-run `changed=0`, pod `2/2 Running`.
 - [ ] Bring vz verbs/manifest "as close to kubectl as feasible" so k8s features can
       be added compatibly.
 
-## C. Build & minify on k3s (control-plane-side k8s)
+## C. Build & minify — native k8s flows at build time, two opt-in styles
 
-- [ ] Run build/minification as k8s **Jobs** on the dev k3s (ephemeral build pods;
-      reproducible/CI-able). The minifier is currently host-bound (`sudo rsync`,
-      `ROOT=/`) — containerizing it as a privileged build Job is the real lift.
+Resolved design (2026-06-30): **reuse native k8s build infrastructure at build time;
+keep the runtime registry-less** (see Direction). Build-time registries on the control
+node are fine; both image styles try to use standard k8s/OCI build infra.
+
+**One build front-end, optional minify back-end.** The two styles differ by a back-end
+stage, not a parallel pipeline:
+
+- **Traditional style** — standard flow only: s2i / multistage build (builder image
+  carries the toolchain; the runtime image is a minimal base with build deps excluded —
+  the "production images shouldn't ship build dependencies" pattern). Model it on Red
+  Hat's `ubi9/nodejs-20` (builder, has the s2i `assemble`) → `ubi9/nodejs-20-minimal`
+  (runtime, `run` only) two-stage split.
+- **Minified style** — the strace-trace minifier as a back-end stage *after* a standard
+  build (~21MB closures). **Inherently unsafe** (a stripped `.so` / locale / CA bundle
+  can break at runtime), so it is strictly **opt-in**.
+- **Hybrid** — a minified *base/runtime* image with a non-minified app layered on top:
+  the unsafe stripping touches only the heavy base; the app ships intact.
+
+**Two scenarios, never two flavors at once.** A workload is *either* "minified in both
+dev and prod" *or* "unminified in both" — the user picks one for the whole deployment.
+We never build both variants simultaneously, so **dev always runs the literal prod
+artifact** (parity preserved); minification is a deployment-wide opt-in, not a
+per-environment difference.
+
+- [ ] **Minification as a privileged build Job/container** (codifies an earlier
+      decision that was never written here). The minifier needs install + strace +
+      rsync on one host with `ROOT=/`; a **privileged build pod *is* that "one host"
+      sandbox** — running install/trace/rsync inside a pod whose rootfs is the chosen
+      base *structurally fixes* the current foreign-rootfs limitation (`dir-links` /
+      `strace-spec` assume traced == build host). This is the real lift and the path to
+      CI-able, reproducible minification.
+- [ ] Build the **traditional-style minimal-runtime infra** (a vz analogue of
+      ubi-minimal + s2i/multistage) so the non-minified style is fully native-k8s.
 
 ## 1. The real workload — production-ready, blocked externally
 
@@ -148,6 +197,12 @@ Alpine stays for now as the NAT/DHCP gateway and where the agent runs.
       decryption** (ansible-vault/sops on the offline control plane while rendering
       the image/unit). Deferred until a workload needs it; a node-side `secretsd`
       for per-access audit is a later want.
+- [ ] **Image-signature hardening (low priority).** scp'd images are currently trusted
+      implicitly — control-node compromise = fleet RCE, which is already true via the
+      fleet SSH key. Sign images on the control node and verify on the node at install
+      to defend the *separate* "a worker forges/poisons an image" (worker-RCE) attack.
+      Low priority: the offline, NAT-isolated, hardware-key-gated control node already
+      beats an exposed etcd.
 - [ ] `vztool` is run via `node src/*.ts`. No build/install or `PATH` shims yet; add
       if it should be invokable as bare `vz-*`.
 

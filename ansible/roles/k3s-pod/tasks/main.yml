@@ -1,0 +1,96 @@
+---
+# k3s-pod — apply one pod manifest to the local k3s dev cluster.
+#
+# The dev half of the two-target model. Unlike podman-pod (which ships images to a
+# remote node and lets systemd own a Quadlet), here the node IS the k3s host: we
+# import images from its rootless Podman store into k3s's containerd, then apply
+# the manifest declaratively with kubernetes.core.k8s.
+#
+# Expected vars (same as podman-pod; the `vz apply` wrapper passes these):
+#   pod_name      : metadata.name of the pod (used only for logging/markers)
+#   pod_manifest  : control-host path to the validated k8s-subset Pod YAML
+#   pod_images    : list of localhost/... image refs the pod uses
+#   pod_ports     : list of {port:int, protocol:"tcp"|"udp"} to open in firewalld
+# Role defaults add: kubeconfig, pod_def (the parsed manifest).
+
+- name: import-marker directory exists
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.config/vz/k3s-imported"
+    state: directory
+    mode: "0755"
+
+# podman save (rootless store) | k3s ctr import (root). k3s's bundled ctr defaults
+# to the k8s.io namespace so the kubelet can see the image; -n is explicit anyway.
+# Idempotent by image Id: re-run with an unchanged image is a no-op, but a rebuild
+# under the same tag (new Id) re-imports — which a bare `ctr images ls` name check
+# would miss. The marker records the last Id vz imported for this ref.
+- name: import images into k3s containerd (rootless podman -> k8s.io), by image id
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ref={{ item | quote }}
+    marker="{{ ansible_facts['user_dir'] }}/.config/vz/k3s-imported/$(printf '%s' "$ref" | tr '/:' '__')"
+    id=$(podman image inspect "$ref" --format json | jq -r '.[0].Id')
+    if [ "$(cat "$marker" 2>/dev/null || true)" = "$id" ]; then
+      echo NOCHANGE
+      exit 0
+    fi
+    podman save "$ref" | sudo k3s ctr -n k8s.io images import -
+    printf '%s' "$id" > "$marker"
+    echo IMPORTED
+  args:
+    executable: /bin/bash
+  loop: "{{ pod_images }}"
+  loop_control:
+    label: "{{ item }}"
+  register: img_import
+  # The script is idempotent (NOCHANGE when the id marker matches); the shell module
+  # would otherwise always report "changed", so we derive real change below from the
+  # per-item stdout marker rather than a changed_when (result keys are no longer
+  # injected into a loop's conditional namespace in ansible-core 2.19+).
+  changed_when: false
+
+- name: images that were actually (re)imported this run
+  ansible.builtin.set_fact:
+    reimported: "{{ img_import.results | selectattr('stdout', 'search', 'IMPORTED') | map(attribute='item') | list }}"
+
+# A bare Pod with imagePullPolicy:Never won't pick up a freshly re-imported image,
+# so when an image actually changed we delete the pod and let the apply recreate it.
+- name: redeploy the pod when an image was re-imported
+  kubernetes.core.k8s:
+    state: absent
+    definition: "{{ pod_def }}"
+    namespace: "{{ pod_namespace }}"
+    kubeconfig: "{{ kubeconfig }}"
+    wait: true
+  when: reimported | length > 0
+
+- name: apply the pod manifest to k3s
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ pod_def }}"
+    namespace: "{{ pod_namespace }}"
+    kubeconfig: "{{ kubeconfig }}"
+    wait: true
+  register: k8s_apply
+
+# --- firewall: declared pod ports drive firewalld (same as podman-pod) ---
+# The antifraud pod runs hostNetwork:true, so the external job round-trip needs the
+# host's firewall open on the declared ports. Skipped when firewalld isn't running.
+- name: gather service facts (is firewalld running?)
+  ansible.builtin.service_facts:
+  when: pod_ports | default([]) | length > 0
+
+- name: open declared pod ports in firewalld
+  become: true
+  ansible.posix.firewalld:
+    port: "{{ item.port }}/{{ item.protocol }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ pod_ports | default([]) }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.protocol }}"
+  when:
+    - pod_ports | default([]) | length > 0
+    - "'firewalld.service' in (ansible_facts.services | default({}))"
+    - ansible_facts.services['firewalld.service'].state == 'running'
