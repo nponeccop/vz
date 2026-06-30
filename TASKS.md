@@ -271,8 +271,9 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
   - [~] **Spike (ESXi 8.0.3 probed 2026-06-30 — gates the whole thing):**
         (a) ⏳ CI quota — untested; publish as a **release asset** (≤2 GB free public) to
         avoid the tighter artifact-storage quota; fallbacks self-hosted/GitLab/local.
-        (b) ✅ `vmkfstools -i … -d thin` ingests streamOptimized (the OVA import path);
-        datastore 1.7 T free; full round-trip waits on a real artifact.
+        (b) ✅ **confirmed** — a `qemu-img` streamOptimized VMDK imported via
+        `vmkfstools -i … -d thin` (Clone 100% → VMFS thin); datastore 1.7 T free. Upload
+        needs **`scp -O`** (legacy protocol; plain scp = "Connection closed").
         (c) ✅ **TLS-fetch confirmed** via `/bin/python3` (3.11) — but **BusyBox `wget`
         segfaults on TLS** (so python, not wget) and **no CA store** (fetch with verify
         off + pinned **sha256** for integrity); `httpClient` firewall already enabled.
@@ -280,9 +281,13 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
         `make-rocky-vm.sh`, only the static-gateway seed variant is new.
         Close-out: one ESXi run on a small CI image covers (a)+(b)+(c) — python3 fetch →
         sha256 verify → `vmkfstools -i` → boot.
-  - [ ] **CI golden-image pipeline**: `qcow2 → streamOptimized VMDK`, published as a
-        **pinned** release artifact with a sha256 (ideally signed). No custom compression
-        (streamOptimized is already deflate; `vmkfstools -i` ingests it).
+  - [~] **CI golden-image pipeline** (`platform/golden-image/build-golden-vmdk.sh` +
+        `.github/workflows/golden-image.yml`): `qcow2 → streamOptimized VMDK`, published as
+        a GitHub **release asset** (≤2 GB, dodges the artifact-storage quota) with a
+        sha256. Source qcow2 pinned (Rocky 9.8-20260525.0 + its sha256); converter
+        validated locally and its output proven to import on ESXi (spike b). Remaining:
+        run the workflow for real to confirm quota (a) and produce the first release.
+        Self-contained for later extraction to an image-only repo. Signing TBD.
   - [ ] **Provenance**: verify the artifact hash **off-ESXi** — at the workstation on
         upload, or on the gateway once up — never on ESXi (fixes the "never checked the
         ISO" habit; avoids a verify-on-ESXi chicken-and-egg).

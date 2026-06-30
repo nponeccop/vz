@@ -1,0 +1,56 @@
+name: golden-image
+
+# Build the Rocky GenericCloud -> streamOptimized VMDK golden image and publish it as a
+# release asset. Release assets allow up to 2 GB on free public repos, which sidesteps
+# the tighter Actions artifact-storage quota (spike item (a), see
+# platform/ovh-esxi/README.md "Layer 0"). Public-repo Actions minutes are unmetered.
+#
+# This workflow + platform/golden-image/ are self-contained on purpose: they are meant to
+# move to a dedicated image-only repo once the pipeline is proven.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rocky_version:
+        description: Rocky point release (used for the release tag/name)
+        default: "9.8-20260525.0"
+      qcow2_url:
+        description: Source GenericCloud qcow2 URL
+        default: https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base-9.8-20260525.0.x86_64.qcow2
+      qcow2_sha256:
+        description: Pinned sha256 of the source qcow2
+        default: 92c206cc6f790c61583247eefe87890f8828420662c17cacf247cec78ab4eec8
+
+permissions:
+  contents: write   # create the release / upload assets
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu-img
+        run: sudo apt-get update && sudo apt-get install -y qemu-utils
+
+      - name: Build golden VMDK
+        run: |
+          out="Rocky-9-GenericCloud-${{ inputs.rocky_version }}.x86_64"
+          echo "OUT=$out" >> "$GITHUB_ENV"
+          bash platform/golden-image/build-golden-vmdk.sh \
+            "${{ inputs.qcow2_url }}" "${{ inputs.qcow2_sha256 }}" "$out"
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="golden-rocky-${{ inputs.rocky_version }}"
+          notes="streamOptimized VMDK for ESXi 'vmkfstools -i ... -d thin' import. ESXi has no CA store; verify the download against the .sha256 — that hash is the integrity anchor."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${OUT}.vmdk" "${OUT}.vmdk.sha256" --clobber
+          else
+            gh release create "$tag" \
+              --title "Rocky 9 golden VMDK ${{ inputs.rocky_version }}" \
+              --notes "$notes" \
+              "${OUT}.vmdk" "${OUT}.vmdk.sha256"
+          fi

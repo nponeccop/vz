@@ -126,8 +126,10 @@ ESXi" chicken-and-egg. Cheap, and it removes the "we never checked the ISO" habi
 **Spike status (ESXi 8.0.3 probed 2026-06-30):**
 1. ⏳ CI can build the VMDK within quota — pending; publish as a **release asset** (≤2 GB
    on free public repos) to dodge the tighter Actions artifact-storage quota.
-2. ✅ confirmed-by-design — `vmkfstools -i … -d thin` ingests streamOptimized (it is the
-   OVA import path); full round-trip waits on a real CI artifact. Datastore has 1.7 T free.
+2. ✅ **confirmed empirically** — a `qemu-img`-produced streamOptimized VMDK imported via
+   `vmkfstools -i … -d thin` (*Clone: 100% → VMFS thin*, valid descriptor + geometry).
+   Datastore 1.7 T free. Upload gotcha: ESXi needs **`scp -O`** (legacy protocol) — plain
+   `scp` (OpenSSH 9 SFTP default) returns "Connection closed".
 3. ✅ **confirmed** — `/bin/python3` fetched a file from GitHub over HTTPS; `httpClient`
    firewall already open. Caveats baked into the design: **wget segfaults on TLS**
    (python only), **no CA store** (verify off + pinned sha256).
