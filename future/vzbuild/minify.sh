@@ -75,6 +75,18 @@ mp=$(buildah mount "$ctr")
 # Drop pseudo-filesystems and ldconfig caches (same filter the host scripts used).
 grep_nosys() { grep -vE '^/(dev|sys|run|tmp|proc)/|^(/etc/ld.so.cache|/|/var/cache/ldconfig/aux-cache)$'; }
 
+# Keep only candidates that actually exist in the mounted rootfs. A path opened
+# during `buildah run` via a RUNTIME bind mount (e.g. /etc/resolv.conf, /etc/hosts,
+# /etc/hostname — DNS-using workloads like the node worker open these) exists then
+# but NOT in the static rootfs, so dir-links.js would die ("Broken file list").
+# The runtime re-injects those; they're added back via the fixed must-have list.
+keep_existing() {
+  while IFS= read -r p; do
+    if [ -e "$mp$p" ] || [ -L "$mp$p" ]; then printf '%s\n' "$p"; fi
+  done
+  return 0
+}
+
 echo ">>> compute the closure (dir-links.js resolves symlinks against the container rootfs)"
 spec="$work/spec"
 {
@@ -90,7 +102,7 @@ spec="$work/spec"
            -o -name 'ld-musl-*.so*' -o -name 'libresolv.so*' \) 2>/dev/null \
         | sed "s|^${mp}||"
       [ -f "$mp/etc/hosts" ] && echo /etc/hosts
-    } | grep_nosys
+    } | grep_nosys | keep_existing
   ) "$mp" | grep_nosys
   # fixed must-have mount points / dirs / runtime files
   cat <<'EOF'

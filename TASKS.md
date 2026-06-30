@@ -165,10 +165,18 @@ per-environment difference.
       Job 2026-06-30: full Rocky 9 base → **24.6 MB** `gearmand-min:job` (97-entry spec),
       and the *standalone* minified image serves a job (`STANDALONE`→`ENOLADNATS`).
       Base is **Rocky, not UBI** — gearmand+CRB deps aren't in the free UBI subset.
-- [ ] **Drive real workloads** through the minifier: the **node runtime** (the worker
+- [x] **Drive real workloads** through the minifier: the **node runtime** (the worker
       base) and **gearmand** (needs EPEL+CRB; uses the daemon trace recipe). Validates
-      the prod artifacts, not just `bash`. gearmand done (recipe above, 24.6 MB);
-      **node runtime still to do** (mirror the recipe convention for the worker base).
+      the prod artifacts, not just `bash`. Both done as recipes (`k8s/recipes/`):
+      gearmand 24.6 MB; node runtime (`recipes/node.sh`) **104 MB** off Rocky 9
+      (nodejs:20 module), one-shot trace exercising crypto/Intl/`net.connect`/
+      `dns.lookup`+`dns.resolve4`. Standalone minified base verified 2026-06-30:
+      node runs, crypto + ICU work, getaddrinfo resolves, socket stack connects.
+  - Fixed a general minify.sh bug found here: a path opened via a **runtime bind
+    mount** (`/etc/resolv.conf`, exercised by node's c-ares DNS) exists during
+    `buildah run` but not in the static rootfs, so `dir-links.js` died
+    ("Broken file list"). minify.sh now filters strace candidates to those that
+    exist in the mounted rootfs before dir-links; the runtime re-injects the rest.
 - [ ] Build the **traditional-style minimal-runtime infra** (a vz analogue of
       ubi-minimal + s2i/multistage) so the non-minified style is fully native-k8s.
 
