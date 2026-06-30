@@ -1,0 +1,63 @@
+---
+# minify-job.yaml — run future/vzbuild/minify.sh as a privileged k3s build pod.
+#
+# This is the "build as a k8s Job" form of the containerized minifier (TASKS.md C).
+# The recipe (BASE/OUT/INSTALL/TRACE) arrives via the `vz-minify-recipe` ConfigMap
+# (envFrom, so the install/trace shell strings need no YAML quoting); the vzbuild
+# scripts arrive via the `vz-minify-scripts` ConfigMap mounted read-exec at /vzbuild.
+#
+# The built image is exported as an oci-archive to a hostPath; on the single-node
+# dev k3s that path IS the build host's filesystem, so the host then does
+#   skopeo copy oci-archive:/var/tmp/vz-build-out/image.tar containers-storage:$OUT
+# (or podman load). Registry-less first cut; a build-time registry is the alternative.
+#
+# Driven by run-minify-job.sh, which (re)creates both ConfigMaps and applies this.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vz-minify
+spec:
+  backoffLimit: 0          # a failed minify should not silently retry
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: minify
+          image: quay.io/buildah/stable:latest
+          securityContext:
+            privileged: true        # buildah unshare + mount need a usable userns in-pod
+          envFrom:
+            - configMapRef:
+                name: vz-minify-recipe
+          env:
+            - name: STORAGE_DRIVER   # overlay-in-container is fiddly; vfs is reliable
+              value: vfs
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              # dir-links.js needs node; rsync copies the closure. strace is added to
+              # the *working* container by minify.sh, not here.
+              dnf install -y --setopt=install_weak_deps=0 nodejs rsync >/dev/null
+              bash /vzbuild/minify.sh \
+                --base "$BASE" --out "$OUT" \
+                --install "$INSTALL" --trace "$TRACE" \
+                --spec /out/spec.txt
+              echo ">>> export oci-archive to the build-host hostPath"
+              rm -f /out/image.tar
+              skopeo copy "containers-storage:$OUT" "oci-archive:/out/image.tar"
+              echo ">>> wrote /out/image.tar ($OUT)"
+          volumeMounts:
+            - name: scripts
+              mountPath: /vzbuild
+            - name: out
+              mountPath: /out
+      volumes:
+        - name: scripts
+          configMap:
+            name: vz-minify-scripts
+            defaultMode: 0555         # minify.sh + oci.sh are exec'd directly
+        - name: out
+          hostPath:
+            path: /var/tmp/vz-build-out
+            type: DirectoryOrCreate

@@ -125,10 +125,26 @@ per-environment difference.
       `from scratch` image via the existing `oci.sh`. Proven: `bash` minified off
       `ubi9/ubi-minimal` **109 MB → 7.47 MB** (14.6×), runs; un-traced tools correctly
       absent.
-- [ ] Wrap `minify.sh` as an actual **k3s Job** (privileged build pod, build-time
-      registry sink on the control node) for CI-able/reproducible runs, and drive a
-      **real workload** through it (node runtime; gearmand — needs EPEL+CRB). Today it's
-      invoked directly via `buildah unshare` on the build host.
+- [ ] **Wrap `minify.sh` as a k3s build Job** (the privileged build pod). Today it's
+      invoked directly via `buildah unshare` on the build host. Pieces:
+  - [ ] Builder pod spec — `quay.io/buildah/stable` (Fedora; `dnf install nodejs rsync`
+        for `dir-links.js`), **privileged** + `STORAGE_DRIVER=vfs` so `buildah unshare`/
+        mount work in-pod. strace is installed into the *working* container by
+        `minify.sh` itself, not the builder.
+  - [ ] Feed the recipe (`--base/--install/--trace/--out`) via env (`envFrom` a recipe
+        ConfigMap — avoids YAML-quoting the install/trace strings); mount the
+        `future/vzbuild` scripts via a ConfigMap at `/vzbuild` (defaultMode 0555).
+  - [ ] **Output sink**: on the single-node dev k3s a **hostPath** maps straight to the
+        build-host fs — Job writes an `oci-archive` there, host `skopeo copy`s it into
+        podman/containerd. (Blessed alternative: a build-time registry on the control
+        node; hostPath is the registry-less first cut.)
+  - [ ] Make it CI-able/reproducible; later drive it from `kubernetes.core.k8s`.
+- [ ] **Daemon trace recipe.** `minify.sh --trace` runs a one-shot `sh -c` and waits for
+      exit; a daemon (gearmand) needs a **start → exercise → stop** wrapper so the trace
+      captures the serving path, not just startup. Add a recipe convention.
+- [ ] **Drive real workloads** through the minifier: the **node runtime** (the worker
+      base) and **gearmand** (needs EPEL+CRB; uses the daemon trace recipe). Validates
+      the prod artifacts, not just `bash`.
 - [ ] Build the **traditional-style minimal-runtime infra** (a vz analogue of
       ubi-minimal + s2i/multistage) so the non-minified style is fully native-k8s.
 
