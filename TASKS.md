@@ -115,10 +115,17 @@ Alpine stays for now as the NAT/DHCP gateway and where the agent runs.
 
 - [x] `buildhost` VM created on ESXi (Rocky 9.8, 4GB/2cpu, 40G via `DISK=`),
       bootstrapped (`ok=10 changed=5`), k3s installed (node Ready, v1.36.2+k3s1).
-- [ ] Codify the build-host control stack in `platform/ovh-esxi/buildhost.yaml`
-      (buildah, git, node for vztool, ansible-core + collections, k3s, the vz repo)
-      so it is reproducible — done by hand so far (k3s via `get.k3s.io`).
-- [ ] Move the desired-state repo + `vz apply` execution onto the build host.
+- [x] **Build-host control stack codified** in `platform/ovh-esxi/buildhost.yaml`
+      (+`buildhost.sh`): buildah, git + cloned vz repo, Node 24 (NodeSource),
+      ansible-core + collections (containers.podman/ansible.posix/kubernetes.core)
+      + the `kubernetes` python lib (with the oauthlib pip-over-RPM fix), and k3s
+      with the deploy user's kubeconfig. Clean-room validated via ESXi snapshot
+      revert: `ok=12 changed=9 failed=0`, `kubernetes.core.k8s_info` SUCCESS.
+- [ ] Move the desired-state repo + `vz apply` execution onto the build host
+      (repo is cloned; still driving from Alpine for now).
+- [ ] **ansible-core gap**: Rocky appstream ships ansible-core 2.14; vz runs fine
+      on it so far, but newer collections may eventually want 2.15+. Revisit
+      (pip/EPEL ansible-core) if a collection bumps its floor.
 - [ ] Retire Alpine: redesign NAT/DHCP off it and **retest the ESXi bootstrap on a
       secondary clean ESXi host** before decommissioning.
 
