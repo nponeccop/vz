@@ -177,8 +177,41 @@ per-environment difference.
     `buildah run` but not in the static rootfs, so `dir-links.js` died
     ("Broken file list"). minify.sh now filters strace candidates to those that
     exist in the mounted rootfs before dir-links; the runtime re-injects the rest.
-- [ ] Build the **traditional-style minimal-runtime infra** (a vz analogue of
-      ubi-minimal + s2i/multistage) so the non-minified style is fully native-k8s.
+- [x] Build the **traditional-style minimal-runtime infra** so the non-minified style
+      is fully native-k8s. Same "build as a k8s Job" pod as the minifier, but runs a
+      multistage `buildah bud` instead of strace: `k8s/build-job.yaml` +
+      `run-build-job.sh`, driving `recipes/<workload>.Containerfile`. The "minimal"
+      comes from the package manager's **declared** closure — `dnf --installroot`
+      into a fresh root, then `FROM scratch; COPY` (the same technique that builds
+      ubi-micro). Bigger than the traced closure but **safe**: no missed path can omit
+      a file. A chrooted smoke test (`gearmand --version` / `node --version`) makes a
+      missing runtime lib fail the **build**, not production — which is how we caught
+      gearmand needing `mariadb-connector-c` (pulled only via Recommends, dropped by
+      `install_weak_deps=0`). Both produce the same `oci-archive` the minifier does,
+      so a built image is interchangeable with a minified one for `vz apply` (the
+      "two scenarios, one workload" parity). Verified 2026-06-30: the standalone
+      `gearmand-trad` scratch image serves a job (`STANDALONE`→`ENOLADNATS`);
+      `node-trad` runs node v20.20.2 + crypto + ICU + getaddrinfo.
+  - **Size comparison** (declared-closure traditional vs strace-minified vs stock
+    "minimal" images; all built/measured the same day):
+
+    | image (x86_64)              | size    | notes                                       |
+    |-----------------------------|---------|---------------------------------------------|
+    | gearmand, vz minified       | 24.6 MB | strace closure of the running daemon        |
+    | gearmand, vz traditional    |  114 MB | full RPM closure (systemd, mariadb-c, etc.) |
+    | node v20, vz minified       |  104 MB | node binary + ICU dominate                  |
+    | node v20, vz traditional    |  107 MB | node binary + ICU dominate                  |
+    | `ubi9/nodejs-22-minimal`    |  256 MB | Red Hat's own "minimal" node runtime        |
+    | `rockylinux:9-ubi-micro`    | 21.9 MB | bare from-scratch EL9 userland (the floor)  |
+
+  - Takeaways: the minifier's win is **workload-dependent** — huge for a fat-dependency
+    daemon (gearmand 4.6× smaller, because its RPM closure drags in systemd/mariadb/
+    tokyocabinet the daemon never opens), but **marginal for node** (≈3 %), which is
+    one self-contained binary + full ICU that both styles must ship. Either vz node
+    image beats Red Hat's own `nodejs-22-minimal` by ~2.4× (scratch+installroot ships
+    only node's closure, no microdnf/base userland). And gearmand-minified (24.6 MB)
+    lands essentially at the ubi-micro floor (21.9 MB) — the minifier reduces a fat
+    daemon to ≈ bare-base-plus-just-its-own-bits.
 
 ## 1. The real workload — production-ready, blocked externally
 

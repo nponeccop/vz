@@ -1,0 +1,69 @@
+---
+# build-job.yaml — run a TRADITIONAL multistage `buildah bud` as a k3s build pod.
+#
+# This is the non-minified, fully-native-k8s build style (TASKS.md C): the same
+# "build as a k8s Job" pod as minify-job.yaml, but instead of the strace minifier
+# it runs a hand-written multistage Containerfile. The "minimal runtime" comes not
+# from tracing the actual opens but from the package manager's *declared* dependency
+# closure installed into a fresh root with --installroot (the same technique that
+# produces ubi-micro). Bigger than the traced closure, but safe: no missed path can
+# leave a file out, because every RPM-declared dependency is shipped.
+#
+#   minify  : strace the running workload -> ship exactly what was opened (smaller, unsafe)
+#   build   : dnf --installroot the workload -> ship the RPM closure   (larger, safe)
+# Two scenarios over the SAME workload, never two flavours at once.
+#
+# The Containerfile arrives via the `vz-build-file` ConfigMap (mounted at /build);
+# OUT arrives via the `vz-build-recipe` ConfigMap (envFrom). The built image is
+# exported as an oci-archive to the same hostPath the minify Job uses, so the host
+# import path (skopeo copy oci-archive:... containers-storage:$OUT) is identical.
+#
+# Driven by run-build-job.sh, which (re)creates both ConfigMaps and applies this.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vz-build
+spec:
+  backoffLimit: 0          # a failed build should not silently retry
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: build
+          # same builder image as the minify Job: ubi9 + buildah/skopeo, crun pinned
+          # to el9 so memfd_create(MFD_EXEC) is not required. Never pulled.
+          image: localhost/vz-builder:v1
+          imagePullPolicy: Never
+          securityContext:
+            privileged: true        # buildah needs a usable userns in-pod
+          envFrom:
+            - configMapRef:
+                name: vz-build-recipe
+          env:
+            - name: STORAGE_DRIVER   # overlay-in-container is fiddly; vfs is reliable
+              value: vfs
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              # multistage build: builder stage installs into --installroot, final
+              # stage is `FROM scratch` + COPY of that root. No app context needed.
+              buildah bud --storage-driver vfs --isolation chroot \
+                -f /build/Containerfile -t "$OUT" /build
+              echo ">>> export oci-archive to the build-host hostPath"
+              rm -f /out/image.tar
+              skopeo copy "containers-storage:$OUT" "oci-archive:/out/image.tar"
+              echo ">>> wrote /out/image.tar ($OUT)"
+          volumeMounts:
+            - name: buildfile
+              mountPath: /build
+            - name: out
+              mountPath: /out
+      volumes:
+        - name: buildfile
+          configMap:
+            name: vz-build-file       # single key: Containerfile
+        - name: out
+          hostPath:
+            path: /var/tmp/vz-build-out
+            type: DirectoryOrCreate
