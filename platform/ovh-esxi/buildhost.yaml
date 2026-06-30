@@ -1,0 +1,114 @@
+---
+# Provision a Rocky 9 build/control host — the host that runs vz (build + apply)
+# and a local k3s dev cluster (the dev half of the two-target model). Run AFTER
+# ansible/bootstrap.yaml (which gives the deploy user + podman/skopeo + linger):
+#
+#   ./buildhost.sh <ip> [user]
+#
+# Connects as the deploy user (passwordless sudo). Idempotent. The result is the
+# Rocky control host that replaces the Alpine master (NAT/agent stay on Alpine for
+# now). See platform/ovh-esxi/README.md and the repo SPEC-v3.md / TASKS.md.
+- hosts: all
+  vars:
+    node_major: "24"            # vztool runs .ts directly + uses import.meta.main
+    vz_repo: "https://github.com/nponeccop/vz.git"
+    vz_dest: "{{ ansible_facts['user_dir'] }}/vz"
+    vz_collections:             # this host becomes an ansible control node for the fleet
+      - containers.podman
+      - ansible.posix
+      - kubernetes.core
+  tasks:
+    - name: build + control tooling
+      become: true
+      ansible.builtin.dnf:
+        name:
+          - buildah          # oci.sh image builds
+          - git              # the desired-state repo
+          - jq               # build/runtime helpers
+          - tar
+          - xz
+          - rsync            # the strace-driven minifier rsyncs from-spec
+          - python3-pip      # for the kubernetes python lib below
+          - ansible-core     # this host runs vz apply / the dev k8s play
+        state: present
+
+    # --- Node 24 (vztool: native TS type-stripping + import.meta.main) ---
+    - name: NodeSource repo for Node {{ node_major }}
+      become: true
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -fsSL https://rpm.nodesource.com/setup_{{ node_major }}.x | bash -
+      args:
+        executable: /bin/bash
+        creates: /etc/yum.repos.d/nodesource-nodejs.repo
+
+    - name: nodejs
+      become: true
+      ansible.builtin.dnf:
+        name: nodejs
+        state: present
+
+    # --- ansible control-node deps (run vz apply + the kubernetes.core dev play) ---
+    - name: kubernetes python lib (for kubernetes.core.k8s)
+      become: true
+      ansible.builtin.pip:
+        # oauthlib/requests-oauthlib pinned latest: pip's requests-oauthlib needs a
+        # newer oauthlib than the system RPM (which lacks SIGNATURE_RSA and would
+        # shadow-break `import kubernetes`). Installing them via pip puts a current
+        # oauthlib in /usr/local where it wins on sys.path.
+        name:
+          - kubernetes
+          - oauthlib
+          - requests-oauthlib
+        state: latest
+
+    - name: ansible collections for the fleet
+      community.general.ansible_galaxy_install:
+        type: collection
+        name: "{{ item }}"
+      loop: "{{ vz_collections }}"
+
+    # --- k3s: single-node dev cluster (the dev target) ---
+    - name: k3s installed (no traefik; world-readable kubeconfig)
+      become: true
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -sfL https://get.k3s.io | \
+          INSTALL_K3S_EXEC="--disable=traefik --write-kubeconfig-mode=0644" sh -
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/k3s
+
+    - name: k3s service enabled + running
+      become: true
+      ansible.builtin.systemd_service:
+        name: k3s
+        enabled: true
+        state: started
+
+    - name: deploy user's kube dir
+      ansible.builtin.file:
+        path: "{{ ansible_facts['user_dir'] }}/.kube"
+        state: directory
+        mode: "0700"
+
+    - name: point the deploy user's kubeconfig at k3s
+      # k3s writes /etc/rancher/k3s/k3s.yaml mode 0644, so the deploy user can read it.
+      ansible.builtin.copy:
+        remote_src: true
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ ansible_facts['user_dir'] }}/.kube/config"
+        mode: "0600"
+
+    # --- the vz desired-state repo lives on the control host ---
+    - name: clone the vz repo
+      ansible.builtin.git:
+        repo: "{{ vz_repo }}"
+        dest: "{{ vz_dest }}"
+        version: master
+        update: false        # don't clobber local work on re-run
+
+    - name: vztool node deps
+      community.general.npm:
+        path: "{{ vz_dest }}/vztool"
+        ci: false
