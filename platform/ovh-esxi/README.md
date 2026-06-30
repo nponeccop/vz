@@ -134,15 +134,29 @@ ESXi" chicken-and-egg. Cheap, and it removes the "we never checked the ISO" habi
 3. ✅ **confirmed** — `/bin/python3` fetched a file from GitHub over HTTPS; `httpClient`
    firewall already open. Caveats baked into the design: **wget segfaults on TLS**
    (python only), **no CA store** (verify off + pinned sha256).
-4. ⏳ pending — clone + seed + cloud-init already proven by `make-rocky-vm.sh`; only the
-   static-gateway seed variant is new.
+4. ✅ **built** — `make-rocky-vm.sh -g NAME` produces the static-gateway clone, and the
+   ansible **`gateway`** role configures it. Clone + seed + cloud-init were already
+   proven; only the static-gateway seed variant + role were new. Awaiting a real boot
+   (needs the OVH public IP + virtual MAC — the accepted out-of-band step).
+
+**The gateway clone, as built.** `make-rocky-vm.sh -g` differs from a worker in three
+places: the seed carries a NoCloud **network-config v2** that statically addresses both
+NICs (matching each by its pinned MAC and renaming them `ext`/`int`); the VMX gives it
+**two** vmxnet3 NICs — `ext` on the public portgroup pinned to the OVH virtual MAC with
+`checkMACAddress = "FALSE"` (so ESXi accepts the non-VMware OUI), `int` on the Internal
+portgroup; and the script skips the DHCP-lease wait, reaching the box at its known static
+public IP. The ansible **`gateway`** role (`ansible/roles/gateway`, run via
+`ansible/gateway.yaml`) then layers the gateway function — IPv4 forwarding, **nftables**
+NAT masquerade, and **dnsmasq** internal DHCP — the RHEL-native replacement for the
+Alpine `setup-master-{nat,dhcp}.sh`. firewalld is retired on the gateway only (it would
+fight nftables for the ruleset); workers keep it.
 
 **End-to-end proven with the real artifact (2026-06-30):** CI build → 597 MB release
 asset → ESXi `/bin/python3` fetch (verify off) → **sha256 MATCH** → `vmkfstools -i … -d
 thin` → valid 10 G VMFS disk. The pipeline lives at `platform/golden-image/` +
 `.github/workflows/golden-image.yml` (self-contained, for extraction to an image-only
-repo). Only (4) — the static-gateway clone — remains, and it is a build, not a capability
-unknown.
+repo). The genesis chain is fully implemented; only a real gateway boot remains to close
+the loop.
 
 ---
 
@@ -302,8 +316,8 @@ OVH's API endpoint follows the **account's** OVH entity, *not* the physical serv
 | 4 | Migrate the real project onto the new infra | — | **Next** — the actual point | 3b done |
 | 5 | Generalize Layer 1 to DigitalOcean / Vultr | 1 | Bonus | 2–3 stable |
 | 6 | OVH API automation (order server/IP, reverse DNS) | 0 | Bonus | `ovhcloud` CLI configured |
-| 7 | **Golden image via CI** — `qcow2 → streamOptimized VMDK` pinned release artifact | 0 | **Planned** — retires the forgotten on-master converter | CI-quota spike |
-| 8 | **Gateway = golden clone + ansible `gateway` role** (retires Alpine + `setup-master-*.sh`) | 0 | **Planned** — fully automated genesis | 7 + ESXi-fetch spike |
+| 7 | **Golden image via CI** — `qcow2 → streamOptimized VMDK` pinned release artifact | 0 | **Done** — proven end-to-end on ESXi 8.0.3 | CI-quota spike ✅ |
+| 8 | **Gateway = golden clone + ansible `gateway` role** (retires Alpine + `setup-master-*.sh`) | 0 | **Built** — awaiting a real gateway boot | 7 + ESXi-fetch spike ✅ |
 
 ---
 

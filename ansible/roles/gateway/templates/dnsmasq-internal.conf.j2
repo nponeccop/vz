@@ -1,0 +1,12 @@
+# vz internal DHCP — managed by the ansible `gateway` role. Do not edit by hand.
+# DHCP-only (DNS disabled): clients get a public resolver directly and route out
+# via this box's NAT, the way a VPS provider hands networking over.
+port=0
+interface={{ gateway_int_if }}
+bind-interfaces
+dhcp-range={{ gateway_dhcp_range }}
+dhcp-option=option:router,{{ gateway_dhcp_router }}
+dhcp-option=option:dns-server,{{ gateway_dhcp_dns }}
+dhcp-authoritative
+dhcp-leasefile=/var/lib/misc/dnsmasq.leases
+log-dhcp

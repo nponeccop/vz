@@ -1,0 +1,20 @@
+---
+# gateway role — turn a Rocky node into the lab's NAT/DHCP gateway for the ESXi
+# Internal vSwitch. See platform/ovh-esxi/README.md "Layer 0".
+#
+# Division of labour: the cloud-init seed (make-rocky-vm.sh -g) establishes static
+# addressing on BOTH NICs at first boot — it must, because the gateway IS the DHCP
+# server and cannot lease its own address. This role layers the *gateway function*
+# on top of that connectivity: IPv4 forwarding, NAT masquerade, and internal DHCP.
+#
+# Interface names are the seed's set-name values (ext = public/OVH uplink,
+# int = Internal vSwitch), so they are stable regardless of PCI enumeration.
+gateway_ext_if: ext
+gateway_int_if: int
+
+# Internal DHCP pool handed to the workers. Mirrors the old setup-master-dhcp.sh:
+# DHCP-only (DNS disabled) — clients get a public resolver directly and route out
+# through this box's NAT.
+gateway_dhcp_range: 10.10.10.50,10.10.10.150,12h
+gateway_dhcp_router: 10.10.10.1
+gateway_dhcp_dns: 8.8.8.8

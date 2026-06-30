@@ -1,0 +1,86 @@
+---
+# gateway — NAT + internal DHCP for the ESXi Internal vSwitch. The RHEL-native
+# replacement for setup-master-{nat,dhcp}.sh (which were Alpine apk/rc-update).
+# Idempotent; reports real changed/ok. Connects as root (handoff contract).
+
+- name: IPv4 forwarding (persistent + live) — the kernel half of routing
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_file: /etc/sysctl.d/00-vz-gateway.conf
+    state: present
+    reload: true
+
+- name: gateway packages — nftables for NAT, dnsmasq for DHCP
+  ansible.builtin.dnf:
+    name:
+      - nftables
+      - dnsmasq
+    state: present
+
+# firewalld and nftables.service both program nftables; running both fights over
+# the ruleset. The gateway is infrastructure (not a workload node, so it has no
+# podman-pod firewalld ports to manage), so it owns nft directly and firewalld is
+# retired here. Workers keep firewalld — this is scoped to the gateway role only.
+- name: retire firewalld on the gateway (nftables.service owns the ruleset)
+  ansible.builtin.systemd_service:
+    name: firewalld
+    state: stopped
+    enabled: false
+    masked: true
+  failed_when: false
+
+- name: directory for the gateway nft ruleset
+  ansible.builtin.file:
+    path: /etc/nftables
+    state: directory
+    mode: "0755"
+
+- name: NAT + forward ruleset (validated before install)
+  ansible.builtin.template:
+    src: nftables-gateway.nft.j2
+    dest: /etc/nftables/vz-gateway.nft
+    mode: "0600"
+    validate: nft -c -f %s
+  notify: reload nftables
+
+- name: nftables loads the vz-gateway ruleset on boot
+  ansible.builtin.lineinfile:
+    path: /etc/sysconfig/nftables.conf
+    line: include "/etc/nftables/vz-gateway.nft"
+    create: true
+    mode: "0600"
+  notify: reload nftables
+
+- name: nftables.service enabled + running
+  ansible.builtin.systemd_service:
+    name: nftables
+    state: started
+    enabled: true
+
+- name: dnsmasq reads /etc/dnsmasq.d
+  ansible.builtin.lineinfile:
+    path: /etc/dnsmasq.conf
+    regexp: '^#?\s*conf-dir='
+    line: conf-dir=/etc/dnsmasq.d/,*.conf
+    create: true
+    mode: "0644"
+  notify: restart dnsmasq
+
+- name: internal DHCP (DHCP-only; clients get a public resolver + route out via NAT)
+  ansible.builtin.template:
+    src: dnsmasq-internal.conf.j2
+    dest: /etc/dnsmasq.d/internal.conf
+    mode: "0644"
+  notify: restart dnsmasq
+
+- name: dnsmasq enabled + running
+  ansible.builtin.systemd_service:
+    name: dnsmasq
+    state: started
+    enabled: true
+
+# --- HTTPS reverse proxy: future work (see README "Layer 0"). The gateway is the
+# only box with a public IP, so the fleet's public ingress will terminate here.
+# Left as a documented placeholder so this role stays the single source of truth
+# for the gateway when it lands.

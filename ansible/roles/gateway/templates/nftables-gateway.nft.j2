@@ -1,0 +1,22 @@
+#!/usr/sbin/nft -f
+# vz gateway NAT — managed by the ansible `gateway` role. Do not edit by hand.
+# Equivalent of the old iptables MASQUERADE + FORWARD rules, RHEL-native (nftables).
+# No input chain: SSH and dnsmasq stay reachable (the box's public IP is the only
+# ingress and we must not lock ourselves out).
+
+table inet vz_nat {
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        oifname "{{ gateway_ext_if }}" masquerade
+    }
+}
+
+table inet vz_filter {
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+        # internal -> world
+        iifname "{{ gateway_int_if }}" oifname "{{ gateway_ext_if }}" accept
+        # the established/related return path
+        iifname "{{ gateway_ext_if }}" oifname "{{ gateway_int_if }}" ct state related,established accept
+    }
+}

@@ -278,11 +278,12 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
         (c) ✅ **TLS-fetch confirmed** via `/bin/python3` (3.11) — but **BusyBox `wget`
         segfaults on TLS** (so python, not wget) and **no CA store** (fetch with verify
         off + pinned **sha256** for integrity); `httpClient` firewall already enabled.
-        (d) ⏳ static-gateway clone — untested; clone+seed+cloud-init proven by
-        `make-rocky-vm.sh`, only the static-gateway seed variant is new.
+        (d) ✅ **built** — `make-rocky-vm.sh -g` (static both-NIC seed + two-NIC VMX with
+        the OVH virtual MAC pinned) + ansible `gateway` role; awaiting a real boot (needs
+        the OVH public IP + virtual MAC, the out-of-band step).
         **End-to-end proven 2026-06-30**: CI build → 597 MB release asset → ESXi python3
         fetch → sha256 MATCH → `vmkfstools -i` → valid 10 G VMFS disk. (a)+(b)+(c) closed
-        with the real artifact; only (d) remains, and it is a build not an unknown.
+        with the real artifact; (d) implemented, only a real gateway boot remains.
   - [~] **CI golden-image pipeline** (`platform/golden-image/build-golden-vmdk.sh` +
         `.github/workflows/golden-image.yml`): `qcow2 → streamOptimized VMDK`, published as
         a GitHub **release asset** (≤2 GB, dodges the artifact-storage quota) with a
@@ -294,11 +295,17 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
   - [ ] **Provenance**: verify the artifact hash **off-ESXi** — at the workstation on
         upload, or on the gateway once up — never on ESXi (fixes the "never checked the
         ISO" habit; avoids a verify-on-ESXi chicken-and-egg).
-  - [ ] **Gateway as golden clone**: ansible **`gateway` role** (NAT + `dnsmasq` DHCP +
-        future HTTPS reverse proxy) replacing `setup-master-{sudo,nat,dhcp}.sh`; **static
-        gateway seed** variant in `make-rocky-vm.sh` (static internal IP + OVH public IP +
-        hardcoded OVH **virtual MAC**, not `addressType=generated`); boots before workers.
-        OVH side (buy IP / virtual MAC / reverse DNS) stays the accepted out-of-band step.
+  - [~] **Gateway as golden clone** — built, awaiting a real boot. ansible **`gateway`
+        role** (`ansible/roles/gateway` + `ansible/gateway.yaml`): IPv4 forwarding +
+        **nftables** NAT masquerade + **dnsmasq** DHCP, the RHEL-native replacement for
+        `setup-master-{nat,dhcp}.sh` (firewalld retired on the gateway only; HTTPS reverse
+        proxy left as a documented placeholder). **static gateway seed** variant —
+        `make-rocky-vm.sh -g`: NoCloud network-config v2 statically addressing both NICs
+        (matched + renamed `ext`/`int` by pinned MAC), two-NIC VMX with the OVH **virtual
+        MAC** on `ext` (`addressType=static` + `checkMACAddress=FALSE`), reaches the box at
+        its known static IP (no DHCP-lease wait). Boots before workers. OVH side (buy IP /
+        virtual MAC / reverse DNS) stays the accepted out-of-band step. `setup-master-*.sh`
+        retire once a real gateway boot validates the role.
   - [ ] Two generators kept: **Rocky 9** golden image = the official vz bootstrap; a
         **Rocky 10** generator allowed for other ESXi projects.
   - [ ] **Retest the ESXi bootstrap on a secondary clean ESXi host**, then decommission
