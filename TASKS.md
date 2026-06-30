@@ -115,13 +115,20 @@ We never build both variants simultaneously, so **dev always runs the literal pr
 artifact** (parity preserved); minification is a deployment-wide opt-in, not a
 per-environment difference.
 
-- [ ] **Minification as a privileged build Job/container** (codifies an earlier
-      decision that was never written here). The minifier needs install + strace +
-      rsync on one host with `ROOT=/`; a **privileged build pod *is* that "one host"
-      sandbox** — running install/trace/rsync inside a pod whose rootfs is the chosen
-      base *structurally fixes* the current foreign-rootfs limitation (`dir-links` /
-      `strace-spec` assume traced == build host). This is the real lift and the path to
-      CI-able, reproducible minification.
+- [x] **Containerized minifier primitive** (`future/vzbuild/minify.sh`). Runs the
+      whole install + strace + spec + copy *inside a `buildah` working container* built
+      `from <base>`, so `/` == the container rootfs and `dir-links.js` / the loader-nss
+      globs resolve against the same rootfs that was traced — the foreign-rootfs
+      limitation is gone (the container *is* the build host). Fully **rootless** via
+      `buildah unshare` (no more host `sudo`/`ROOT=/`). The trace deps (strace + the
+      install closure) are left behind; only the spec'd closure is `rsync`'d into a
+      `from scratch` image via the existing `oci.sh`. Proven: `bash` minified off
+      `ubi9/ubi-minimal` **109 MB → 7.47 MB** (14.6×), runs; un-traced tools correctly
+      absent.
+- [ ] Wrap `minify.sh` as an actual **k3s Job** (privileged build pod, build-time
+      registry sink on the control node) for CI-able/reproducible runs, and drive a
+      **real workload** through it (node runtime; gearmand — needs EPEL+CRB). Today it's
+      invoked directly via `buildah unshare` on the build host.
 - [ ] Build the **traditional-style minimal-runtime infra** (a vz analogue of
       ubi-minimal + s2i/multistage) so the non-minified style is fully native-k8s.
 
