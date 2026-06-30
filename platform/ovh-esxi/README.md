@@ -101,11 +101,13 @@ argument for automating it.
   Alpine survives only as a hand diagnostic image — one OS (Rocky / RHEL-stable) for all
   lab infrastructure.
 
-**Getting the artifact onto ESXi (unconfirmed — spike first).** Either ESXi's busybox
-`wget`/`curl` TLS-fetches the pinned artifact directly, or — if its TLS stack is too old —
-the admin uploads it once per physical box via SCP / datastore GUI. That upload is
-one-time per server rental (rare), so the SCP fallback is acceptable even if it is not
-pretty.
+**Getting the artifact onto ESXi (spiked ✅ — fetch works via Python).** Confirmed on
+ESXi 8.0.3: the box fetches HTTPS fine, but only via `/bin/python3` (3.11) — **BusyBox
+`wget` segfaults on TLS** (rc=139) and there is **no CA trust store** (`ca-certificates`
+absent), so the fetch runs with cert verification *off* and integrity comes from the
+pinned **sha256**, exactly as the provenance design intended. The `httpClient` firewall
+ruleset is already enabled; the datastore had 1.7 T free. SCP / datastore-GUI upload
+remains the fallback if a box's outbound path is closed.
 
 **The gateway is the one special seed.** Every worker keeps the proven key-only + DHCP
 seed. The gateway cannot get an address from a DHCP server that is *itself*, so it needs a
@@ -121,13 +123,19 @@ truncated artifact would silently become the base of the whole fleet. CI emits a
 on the gateway once it is up — never on ESXi's limited shell, so there is no "verify on
 ESXi" chicken-and-egg. Cheap, and it removes the "we never checked the ISO" habit.
 
-**Spike before any code (the redesign rests on unconfirmed ESXi capability):**
-1. CI can build the VMDK within quota (or pick a fallback runner).
-2. `vmkfstools -i` imports a *CI-produced* streamOptimized VMDK and it boots.
-3. ESXi can TLS-fetch the artifact (else SCP / GUI upload).
-4. A Rocky golden clone comes up as a working static-network gateway from the new seed.
-   (Clone + seed + cloud-init is already proven by `make-rocky-vm.sh`; only the
-   static-gateway seed variant is new.)
+**Spike status (ESXi 8.0.3 probed 2026-06-30):**
+1. ⏳ CI can build the VMDK within quota — pending; publish as a **release asset** (≤2 GB
+   on free public repos) to dodge the tighter Actions artifact-storage quota.
+2. ✅ confirmed-by-design — `vmkfstools -i … -d thin` ingests streamOptimized (it is the
+   OVA import path); full round-trip waits on a real CI artifact. Datastore has 1.7 T free.
+3. ✅ **confirmed** — `/bin/python3` fetched a file from GitHub over HTTPS; `httpClient`
+   firewall already open. Caveats baked into the design: **wget segfaults on TLS**
+   (python only), **no CA store** (verify off + pinned sha256).
+4. ⏳ pending — clone + seed + cloud-init already proven by `make-rocky-vm.sh`; only the
+   static-gateway seed variant is new.
+
+The cheap close-out: once CI emits a small streamOptimized test image, one ESXi run
+covers (1)+(2)+(3) at once — `python3` fetch → sha256 verify → `vmkfstools -i` → boot.
 
 ---
 

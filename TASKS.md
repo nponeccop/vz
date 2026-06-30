@@ -268,14 +268,18 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
       `platform/ovh-esxi/README.md` "Layer 0"). Today the `qcow2 → VMDK` converter and
       the NAT/DHCP gateway both run on a hand-installed Alpine "master", and the exact
       converter invocation was done once and forgotten. Replace with:
-  - [ ] **Spike (gate the whole thing — do first, it rests on unconfirmed capability):**
-        (a) CI can build the streamOptimized VMDK within free runner/artifact **quota**
-        (else self-hosted runner / GitLab CI / one-off local build as a release);
-        (b) `vmkfstools -i` imports a *CI-produced* streamOptimized VMDK and it boots;
-        (c) ESXi busybox `wget`/`curl` can **TLS-fetch** the artifact (else SCP/GUI
-        upload, one-time per box); (d) a Rocky golden clone comes up as a working
-        static-network gateway (clone+seed+cloud-init already proven by `make-rocky-vm.sh`;
-        only the static-gateway seed variant is new).
+  - [~] **Spike (ESXi 8.0.3 probed 2026-06-30 — gates the whole thing):**
+        (a) ⏳ CI quota — untested; publish as a **release asset** (≤2 GB free public) to
+        avoid the tighter artifact-storage quota; fallbacks self-hosted/GitLab/local.
+        (b) ✅ `vmkfstools -i … -d thin` ingests streamOptimized (the OVA import path);
+        datastore 1.7 T free; full round-trip waits on a real artifact.
+        (c) ✅ **TLS-fetch confirmed** via `/bin/python3` (3.11) — but **BusyBox `wget`
+        segfaults on TLS** (so python, not wget) and **no CA store** (fetch with verify
+        off + pinned **sha256** for integrity); `httpClient` firewall already enabled.
+        (d) ⏳ static-gateway clone — untested; clone+seed+cloud-init proven by
+        `make-rocky-vm.sh`, only the static-gateway seed variant is new.
+        Close-out: one ESXi run on a small CI image covers (a)+(b)+(c) — python3 fetch →
+        sha256 verify → `vmkfstools -i` → boot.
   - [ ] **CI golden-image pipeline**: `qcow2 → streamOptimized VMDK`, published as a
         **pinned** release artifact with a sha256 (ideally signed). No custom compression
         (streamOptimized is already deflate; `vmkfstools -i` ingests it).
