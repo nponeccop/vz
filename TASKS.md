@@ -65,9 +65,9 @@ secrets.
 - [x] Full convergence confirmed: second run `ok=10 changed=0` (idempotent no-op).
 - [ ] Migrate `vz ps`/`vz diff` query path off bespoke `state.ts` SSH? (Likely keep —
       the typed diff is the product; it is not Ansible's job.)
-- [ ] Drop now-dead `vztool/src/unit.ts` + its test (`podman_play` generates the
+- [x] Drop now-dead `vztool/src/unit.ts` + its test (`podman_play` generates the
       `.kube`; vz no longer owns that format).
-- [ ] Silence the `INJECT_FACTS_AS_VARS` deprecation: use `ansible_facts['user_dir'|
+- [x] Silence the `INJECT_FACTS_AS_VARS` deprecation: use `ansible_facts['user_dir'|
       'user_id'|'user_uid']` instead of the bare `ansible_*` vars (also lets the
       `id -u` task be dropped — `ansible_facts.user_uid` gives the XDG uid).
 
