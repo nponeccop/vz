@@ -25,8 +25,12 @@
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 
-# buildah mount needs a user namespace when rootless; re-exec ourselves into one.
-if [ -z "${_VZ_UNSHARE:-}" ]; then
+# buildah mount needs a user namespace when ROOTLESS; re-exec ourselves into one.
+# But when we're already real root (e.g. inside a privileged build pod) we must NOT:
+# root has no /etc/subuid range, so `buildah unshare` re-execs itself forever
+# ("buildah-in-a-user-namespace-in-a-user-namespace-in-a...") and dies. Real root
+# can buildah from/run/mount directly, so only unshare for the rootless case.
+if [ "$(id -u)" != 0 ] && [ -z "${_VZ_UNSHARE:-}" ]; then
   exec buildah unshare env _VZ_UNSHARE=1 "$0" "$@"
 fi
 

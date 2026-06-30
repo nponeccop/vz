@@ -125,19 +125,29 @@ per-environment difference.
       `from scratch` image via the existing `oci.sh`. Proven: `bash` minified off
       `ubi9/ubi-minimal` **109 MB → 7.47 MB** (14.6×), runs; un-traced tools correctly
       absent.
-- [ ] **Wrap `minify.sh` as a k3s build Job** (the privileged build pod). Today it's
-      invoked directly via `buildah unshare` on the build host. Pieces:
+- [x] **Wrap `minify.sh` as a k3s build Job** (the privileged build pod). Was invoked
+      directly via `buildah unshare` on the build host; now runs as a Job. **Proven
+      end-to-end 2026-06-30**: `bash` off `ubi9/ubi-minimal` **109 MB → 7.47 MB** inside
+      the Job pod, identical to the direct run; output `oci-archive` landed on the
+      hostPath and imported into the host podman store. Pieces:
   - [x] Manifest + runner written (`future/vzbuild/k8s/minify-job.yaml` +
-        `run-minify-job.sh`): ConfigMaps mount + recipe passthrough + node/rsync install
-        all verified working in-pod.
-  - [ ] **BLOCKER (found 2026-06-30): builder image kernel mismatch.**
-        `quay.io/buildah/stable` is **Fedora 44**, whose `crun` calls
-        `memfd_create(MFD_EXEC)` (needs kernel ≥6.3); the Rocky 9 build host runs
-        **5.14** → buildah dies with `memfd_create(): Invalid argument` right after the
-        node/rsync install. **Fix:** build a kernel-matched **`vz-builder` image FROM
-        ubi9** (buildah + nodejs + rsync baked in — its crun targets 5.14), push to the
-        control-node build store, and point the Job at it. Bonus: drops the per-run
-        `dnf install`. (privileged + `STORAGE_DRIVER=vfs` are already set and correct.)
+        `run-minify-job.sh`): ConfigMaps mount + recipe passthrough verified in-pod.
+  - [x] **Builder image** (`future/vzbuild/k8s/builder.Containerfile` +
+        `build-builder.sh`): `vz-builder` FROM **ubi9** with buildah/skopeo/nodejs/rsync
+        baked in, built by the host's el9 buildah and imported into k3s containerd
+        (`imagePullPolicy: Never`). Drops the per-run `dnf install`. Free UBI packages
+        are a limited subset — drop-in alt is `rockylinux/rockylinux:9-ubi` (or `:10-ubi`
+        for Rocky 10 if 9's package staleness bites).
+  - [x] **Two red-herring blockers chased on 2026-06-30, real cause found:**
+        (1) `quay.io/buildah/stable` is Fedora 44 → `memfd_create(MFD_EXEC)` needs kernel
+        ≥6.3 (host is 5.14). Switching to a ubi9 builder removed the Fedora crun but the
+        error *persisted* — because (2) the true cause was **`buildah unshare` looping**:
+        the pod runs as **root with no `/etc/subuid` range**, so unshare re-execs itself
+        forever (`buildah-in-a-user-namespace-in-a-…`) and the trailing
+        `memfd_create(): Invalid argument` was just noise from the loop. **Fix:**
+        `minify.sh` now skips `buildah unshare` when already `uid 0` — real root in a
+        privileged pod can `buildah from/run/mount` directly; the unshare path stays only
+        for the rootless *host* invocation. (privileged + `STORAGE_DRIVER=vfs` correct.)
   - [ ] Feed the recipe (`--base/--install/--trace/--out`) via env (`envFrom` a recipe
         ConfigMap — avoids YAML-quoting the install/trace strings); mount the
         `future/vzbuild` scripts via a ConfigMap at `/vzbuild` (defaultMode 0555).

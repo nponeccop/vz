@@ -23,7 +23,11 @@ spec:
       restartPolicy: Never
       containers:
         - name: minify
-          image: quay.io/buildah/stable:latest
+          # vz-builder: ubi9 + buildah/skopeo/nodejs/rsync, crun pinned to el9 (kernel
+          # 5.14) — avoids the Fedora memfd_create(MFD_EXEC) >= 6.3 requirement.
+          # Built + imported by build-builder.sh; never pulled from a registry.
+          image: localhost/vz-builder:v1
+          imagePullPolicy: Never
           securityContext:
             privileged: true        # buildah unshare + mount need a usable userns in-pod
           envFrom:
@@ -36,9 +40,8 @@ spec:
           args:
             - |
               set -euo pipefail
-              # dir-links.js needs node; rsync copies the closure. strace is added to
-              # the *working* container by minify.sh, not here.
-              dnf install -y --setopt=install_weak_deps=0 nodejs rsync >/dev/null
+              # buildah/skopeo/nodejs/rsync are baked into vz-builder; strace is added
+              # to the *working* container by minify.sh, not here. No dnf at run time.
               bash /vzbuild/minify.sh \
                 --base "$BASE" --out "$OUT" \
                 --install "$INSTALL" --trace "$TRACE" \
