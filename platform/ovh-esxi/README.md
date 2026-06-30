@@ -65,6 +65,72 @@ cloud-init at all.
 
 ## Layers
 
+### Layer 0 — genesis: the golden image & the gateway  🔭 planned (redesign)
+
+Layer 1 below assumes two things already exist: a **golden VMDK** to clone, and a
+**gateway** running NAT/DHCP on the internal vSwitch. Producing those is the genesis
+problem — and today it is the one part that is *not* automated. This layer fixes that.
+
+**The chicken-and-egg.** The `qcow2 → VMDK` converter (`qemu-img`) needs a Linux host. On
+a fresh ESXi box the only Linux host is a guest; but you cannot make a guest without a
+template, and you cannot make a template without the converter. Today that loop is broken
+by hand: a tiny Alpine ISO is uploaded from the admin workstation, installed as the
+"master", and that Alpine guest runs *both* the converter (Job A) and the gateway (Job B).
+The exact converter invocation was done once and **forgotten** — which is the whole
+argument for automating it.
+
+**The redesign — split the master's two jobs and delete one:**
+
+- **Job A (image factory) moves off ESXi entirely.** Convert the Rocky GenericCloud
+  `qcow2 → streamOptimized VMDK` in **CI**, and publish the result as a *pinned* release
+  artifact. No converter ever runs on ESXi or on a lab guest, so the chicken-and-egg is
+  dissolved and the cross-platform `qemu` pain (no Windows-friendly build) disappears. No
+  custom compression is needed: a streamOptimized VMDK is already deflate-compressed and
+  `vmkfstools -i` ingests it directly.
+  - **Open — CI quota.** A multi-GB convert plus a ~600 MB artifact may exceed free
+    GitHub Actions runner/artifact limits. Measure before committing; fallbacks are a
+    self-hosted runner, GitLab CI, or a one-off local build attached as a release.
+
+- **Job B (gateway) becomes a clone of the golden image.** Once ESXi can obtain the
+  golden VMDK, the gateway is just an early clone, configured by an ansible **`gateway`
+  role** (NAT + `dnsmasq` DHCP + the future HTTPS reverse proxy) that replaces the
+  `setup-master-{sudo,nat,dhcp}.sh` shell scripts. No installer ISO is ever booted again.
+
+- **Alpine is retired from infrastructure.** Its only advantage was a tiny install ISO;
+  the golden-clone genesis boots *no* installer ISO at all, so that advantage evaporates.
+  Alpine survives only as a hand diagnostic image — one OS (Rocky / RHEL-stable) for all
+  lab infrastructure.
+
+**Getting the artifact onto ESXi (unconfirmed — spike first).** Either ESXi's busybox
+`wget`/`curl` TLS-fetches the pinned artifact directly, or — if its TLS stack is too old —
+the admin uploads it once per physical box via SCP / datastore GUI. That upload is
+one-time per server rental (rare), so the SCP fallback is acceptable even if it is not
+pretty.
+
+**The gateway is the one special seed.** Every worker keeps the proven key-only + DHCP
+seed. The gateway cannot get an address from a DHCP server that is *itself*, so it needs a
+**static** seed: a static internal IP (e.g. `10.10.10.1/24`), the OVH public IP, and —
+because OVH routes an extra IP only to its assigned **virtual MAC** — a hardcoded
+`ethernet0.address` (not ESXi's `addressType = "generated"`). It must boot **before** any
+worker. The OVH side (buy IP, generate virtual MAC, reverse DNS) stays the one accepted
+out-of-band manual step, same category as the OVH API.
+
+**Provenance (fixing a bad habit).** The golden image seeds *every* node, so a tampered or
+truncated artifact would silently become the base of the whole fleet. CI emits a sha256
+(and ideally a signature); it is verified **off-ESXi** — at the workstation on upload, or
+on the gateway once it is up — never on ESXi's limited shell, so there is no "verify on
+ESXi" chicken-and-egg. Cheap, and it removes the "we never checked the ISO" habit.
+
+**Spike before any code (the redesign rests on unconfirmed ESXi capability):**
+1. CI can build the VMDK within quota (or pick a fallback runner).
+2. `vmkfstools -i` imports a *CI-produced* streamOptimized VMDK and it boots.
+3. ESXi can TLS-fetch the artifact (else SCP / GUI upload).
+4. A Rocky golden clone comes up as a working static-network gateway from the new seed.
+   (Clone + seed + cloud-init is already proven by `make-rocky-vm.sh`; only the
+   static-gateway seed variant is new.)
+
+---
+
 ### Layer 1 — VM provisioning → the handoff contract  ✅ validated
 **ESXi-only for now; DigitalOcean / Vultr later. Bonus, not the prize.**
 
@@ -81,7 +147,8 @@ The realized design:
 - **Golden image, cloned per VM.** Download the Rocky cloud image once, convert `qcow2 →
   streamOptimized VMDK → VMFS thin` (qemu-img on a temporary scratch disk, since the master root
   fs is tiny; then `vmkfstools -i`). Keep the result as a read-only base and `vmkfstools -i`
-  clone it per VM — no re-download/convert.
+  clone it per VM — no re-download/convert. *(This manual on-master converter is being
+  retired — see Layer 0: the VMDK is built in CI and published as a pinned artifact.)*
 - **cloud-init seed = key-only (NoCloud ISO).** A tiny ISO labelled `CIDATA` with `meta-data` +
   `user-data` that injects the CAPI key for `root` and sets `PermitRootLogin prohibit-password`
   via an `sshd_config.d` drop-in. **No network-config** — DHCP from the master handles
@@ -220,6 +287,8 @@ OVH's API endpoint follows the **account's** OVH entity, *not* the physical serv
 | 4 | Migrate the real project onto the new infra | — | **Next** — the actual point | 3b done |
 | 5 | Generalize Layer 1 to DigitalOcean / Vultr | 1 | Bonus | 2–3 stable |
 | 6 | OVH API automation (order server/IP, reverse DNS) | 0 | Bonus | `ovhcloud` CLI configured |
+| 7 | **Golden image via CI** — `qcow2 → streamOptimized VMDK` pinned release artifact | 0 | **Planned** — retires the forgotten on-master converter | CI-quota spike |
+| 8 | **Gateway = golden clone + ansible `gateway` role** (retires Alpine + `setup-master-*.sh`) | 0 | **Planned** — fully automated genesis | 7 + ESXi-fetch spike |
 
 ---
 
@@ -231,4 +300,11 @@ OVH's API endpoint follows the **account's** OVH entity, *not* the physical serv
 - Direct push to the repo (no fork).
 - **Networking by DHCP from the master**, not per-VM static cloud-init config. Simpler, and it
   matches the provider-handoff model (a VM just gets a working network on boot).
-- **Seeds are key-only** — networking is the lab's job (DHCP), not the seed's.
+- **Seeds are key-only** — networking is the lab's job (DHCP), not the seed's. *(One
+  exception, by necessity: the **gateway** seed is static — it is the DHCP server and
+  cannot lease from itself. See Layer 0.)*
+- **Genesis is automated via a CI-built golden image (planned).** The `qcow2 → VMDK`
+  converter moves to CI and publishes a pinned, hash-verified artifact; the gateway
+  becomes a clone of that image driven by an ansible `gateway` role. This **retires
+  Alpine** from infrastructure (kept only as a diagnostic image) and the
+  `setup-master-*.sh` shell scripts. Gated on a CI-quota + ESXi-fetch spike (Layer 0).

@@ -248,7 +248,8 @@ config is **baked into the image**, so no secrets machinery is needed to ship it
 
 The decision: the build host becomes the **full control host** (ansible + git
 desired-state + node/vztool + podman/buildah store + k3s). `vz apply` runs from it.
-Alpine stays for now as the NAT/DHCP gateway and where the agent runs.
+Alpine stays for now as the NAT/DHCP gateway and where the agent runs — but the genesis
+redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
 
 - [x] `buildhost` VM created on ESXi (Rocky 9.8, 4GB/2cpu, 40G via `DISK=`),
       bootstrapped (`ok=10 changed=5`), k3s installed (node Ready, v1.36.2+k3s1).
@@ -263,8 +264,33 @@ Alpine stays for now as the NAT/DHCP gateway and where the agent runs.
 - [ ] **ansible-core gap**: Rocky appstream ships ansible-core 2.14; vz runs fine
       on it so far, but newer collections may eventually want 2.15+. Revisit
       (pip/EPEL ansible-core) if a collection bumps its floor.
-- [ ] Retire Alpine: redesign NAT/DHCP off it and **retest the ESXi bootstrap on a
-      secondary clean ESXi host** before decommissioning.
+- [ ] **Automate genesis + retire Alpine** (the ESXi bootstrap redesign — see
+      `platform/ovh-esxi/README.md` "Layer 0"). Today the `qcow2 → VMDK` converter and
+      the NAT/DHCP gateway both run on a hand-installed Alpine "master", and the exact
+      converter invocation was done once and forgotten. Replace with:
+  - [ ] **Spike (gate the whole thing — do first, it rests on unconfirmed capability):**
+        (a) CI can build the streamOptimized VMDK within free runner/artifact **quota**
+        (else self-hosted runner / GitLab CI / one-off local build as a release);
+        (b) `vmkfstools -i` imports a *CI-produced* streamOptimized VMDK and it boots;
+        (c) ESXi busybox `wget`/`curl` can **TLS-fetch** the artifact (else SCP/GUI
+        upload, one-time per box); (d) a Rocky golden clone comes up as a working
+        static-network gateway (clone+seed+cloud-init already proven by `make-rocky-vm.sh`;
+        only the static-gateway seed variant is new).
+  - [ ] **CI golden-image pipeline**: `qcow2 → streamOptimized VMDK`, published as a
+        **pinned** release artifact with a sha256 (ideally signed). No custom compression
+        (streamOptimized is already deflate; `vmkfstools -i` ingests it).
+  - [ ] **Provenance**: verify the artifact hash **off-ESXi** — at the workstation on
+        upload, or on the gateway once up — never on ESXi (fixes the "never checked the
+        ISO" habit; avoids a verify-on-ESXi chicken-and-egg).
+  - [ ] **Gateway as golden clone**: ansible **`gateway` role** (NAT + `dnsmasq` DHCP +
+        future HTTPS reverse proxy) replacing `setup-master-{sudo,nat,dhcp}.sh`; **static
+        gateway seed** variant in `make-rocky-vm.sh` (static internal IP + OVH public IP +
+        hardcoded OVH **virtual MAC**, not `addressType=generated`); boots before workers.
+        OVH side (buy IP / virtual MAC / reverse DNS) stays the accepted out-of-band step.
+  - [ ] Two generators kept: **Rocky 9** golden image = the official vz bootstrap; a
+        **Rocky 10** generator allowed for other ESXi projects.
+  - [ ] **Retest the ESXi bootstrap on a secondary clean ESXi host**, then decommission
+        Alpine from infra (keep it only as a diagnostic image).
 
 ## Smaller follow-ups / known limitations
 
