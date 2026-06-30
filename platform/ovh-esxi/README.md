@@ -123,9 +123,10 @@ truncated artifact would silently become the base of the whole fleet. CI emits a
 on the gateway once it is up — never on ESXi's limited shell, so there is no "verify on
 ESXi" chicken-and-egg. Cheap, and it removes the "we never checked the ISO" habit.
 
-**Spike status (ESXi 8.0.3 probed 2026-06-30):**
-1. ⏳ CI can build the VMDK within quota — pending; publish as a **release asset** (≤2 GB
-   on free public repos) to dodge the tighter Actions artifact-storage quota.
+**Spike status (ESXi 8.0.3, all validated 2026-06-30):**
+1. ✅ **confirmed** — the workflow built the VMDK in **~105 s** on a free public-repo
+   runner (unmetered minutes) and published a **597 MB release asset** + sha256 (well
+   under the 2 GB asset limit, so it never touches the artifact-storage quota).
 2. ✅ **confirmed empirically** — a `qemu-img`-produced streamOptimized VMDK imported via
    `vmkfstools -i … -d thin` (*Clone: 100% → VMFS thin*, valid descriptor + geometry).
    Datastore 1.7 T free. Upload gotcha: ESXi needs **`scp -O`** (legacy protocol) — plain
@@ -136,8 +137,12 @@ ESXi" chicken-and-egg. Cheap, and it removes the "we never checked the ISO" habi
 4. ⏳ pending — clone + seed + cloud-init already proven by `make-rocky-vm.sh`; only the
    static-gateway seed variant is new.
 
-The cheap close-out: once CI emits a small streamOptimized test image, one ESXi run
-covers (1)+(2)+(3) at once — `python3` fetch → sha256 verify → `vmkfstools -i` → boot.
+**End-to-end proven with the real artifact (2026-06-30):** CI build → 597 MB release
+asset → ESXi `/bin/python3` fetch (verify off) → **sha256 MATCH** → `vmkfstools -i … -d
+thin` → valid 10 G VMFS disk. The pipeline lives at `platform/golden-image/` +
+`.github/workflows/golden-image.yml` (self-contained, for extraction to an image-only
+repo). Only (4) — the static-gateway clone — remains, and it is a build, not a capability
+unknown.
 
 ---
 

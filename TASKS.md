@@ -269,8 +269,9 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
       the NAT/DHCP gateway both run on a hand-installed Alpine "master", and the exact
       converter invocation was done once and forgotten. Replace with:
   - [~] **Spike (ESXi 8.0.3 probed 2026-06-30 — gates the whole thing):**
-        (a) ⏳ CI quota — untested; publish as a **release asset** (≤2 GB free public) to
-        avoid the tighter artifact-storage quota; fallbacks self-hosted/GitLab/local.
+        (a) ✅ **confirmed** — workflow built the VMDK in ~105 s (free public runner,
+        unmetered) and published a 597 MB **release asset** + sha256 (< 2 GB asset limit,
+        no artifact-storage quota hit).
         (b) ✅ **confirmed** — a `qemu-img` streamOptimized VMDK imported via
         `vmkfstools -i … -d thin` (Clone 100% → VMFS thin); datastore 1.7 T free. Upload
         needs **`scp -O`** (legacy protocol; plain scp = "Connection closed").
@@ -279,15 +280,17 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
         off + pinned **sha256** for integrity); `httpClient` firewall already enabled.
         (d) ⏳ static-gateway clone — untested; clone+seed+cloud-init proven by
         `make-rocky-vm.sh`, only the static-gateway seed variant is new.
-        Close-out: one ESXi run on a small CI image covers (a)+(b)+(c) — python3 fetch →
-        sha256 verify → `vmkfstools -i` → boot.
+        **End-to-end proven 2026-06-30**: CI build → 597 MB release asset → ESXi python3
+        fetch → sha256 MATCH → `vmkfstools -i` → valid 10 G VMFS disk. (a)+(b)+(c) closed
+        with the real artifact; only (d) remains, and it is a build not an unknown.
   - [~] **CI golden-image pipeline** (`platform/golden-image/build-golden-vmdk.sh` +
         `.github/workflows/golden-image.yml`): `qcow2 → streamOptimized VMDK`, published as
         a GitHub **release asset** (≤2 GB, dodges the artifact-storage quota) with a
         sha256. Source qcow2 pinned (Rocky 9.8-20260525.0 + its sha256); converter
-        validated locally and its output proven to import on ESXi (spike b). Remaining:
-        run the workflow for real to confirm quota (a) and produce the first release.
-        Self-contained for later extraction to an image-only repo. Signing TBD.
+        validated locally and its output proven to import on ESXi (spike b). First real
+        run green (~105 s, 597 MB release asset `golden-rocky-9.8-20260525.0`); ESXi
+        fetched + verified + imported it end-to-end. Self-contained for later extraction
+        to an image-only repo. Signing TBD.
   - [ ] **Provenance**: verify the artifact hash **off-ESXi** — at the workstation on
         upload, or on the gateway once up — never on ESXi (fixes the "never checked the
         ISO" habit; avoids a verify-on-ESXi chicken-and-egg).
