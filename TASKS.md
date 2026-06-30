@@ -156,12 +156,19 @@ per-environment difference.
         podman/containerd. (Blessed alternative: a build-time registry on the control
         node; hostPath is the registry-less first cut.)
   - [ ] Make it CI-able/reproducible; later drive it from `kubernetes.core.k8s`.
-- [ ] **Daemon trace recipe.** `minify.sh --trace` runs a one-shot `sh -c` and waits for
+- [x] **Daemon trace recipe.** `minify.sh --trace` runs a one-shot `sh -c` and waits for
       exit; a daemon (gearmand) needs a **start → exercise → stop** wrapper so the trace
-      captures the serving path, not just startup. Add a recipe convention.
+      captures the serving path, not just startup. Done as a recipe convention
+      (`k8s/recipes/gearmand.sh`): start gearmand backgrounded, probe the port, run a
+      `gearman` worker + client round-trip (one real job), then kill it — `strace -f`
+      follows the backgrounded child so the dispatch closure is captured. Proven on the
+      Job 2026-06-30: full Rocky 9 base → **24.6 MB** `gearmand-min:job` (97-entry spec),
+      and the *standalone* minified image serves a job (`STANDALONE`→`ENOLADNATS`).
+      Base is **Rocky, not UBI** — gearmand+CRB deps aren't in the free UBI subset.
 - [ ] **Drive real workloads** through the minifier: the **node runtime** (the worker
       base) and **gearmand** (needs EPEL+CRB; uses the daemon trace recipe). Validates
-      the prod artifacts, not just `bash`.
+      the prod artifacts, not just `bash`. gearmand done (recipe above, 24.6 MB);
+      **node runtime still to do** (mirror the recipe convention for the worker base).
 - [ ] Build the **traditional-style minimal-runtime infra** (a vz analogue of
       ubi-minimal + s2i/multistage) so the non-minified style is fully native-k8s.
 
