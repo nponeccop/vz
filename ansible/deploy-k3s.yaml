@@ -6,8 +6,9 @@
 #   deploy.yaml      prod  -> podman_play(quadlet) over SSH   (daemonless, no plane)
 #   deploy-k3s.yaml  dev   -> kubernetes.core.k8s -> k3s      (real, bulky, insecure OK)
 #
-# Driven by `vz apply` (dev target): it validates the fleet, generates the
-# inventory + extra-vars, and invokes:
+# Takes the same generated inventory + extra-vars as deploy.yaml, but `vz apply`
+# does not target it yet (it hardcodes deploy.yaml) — for now this dev path is run
+# directly against the same inventory (see TASKS "Fleet / vz apply"):
 #
 #   ansible-playbook -i <generated-inventory> deploy-k3s.yaml
 #
