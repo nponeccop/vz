@@ -25,6 +25,29 @@ These are not negotiable; every decision below preserves them.
   pull-from-registry. Images are *pushed*, minified, and layered so an update
   ships only what changed.
 
+## Trust model — the control host is our registry + etcd
+
+Instead of always-on, network-exposed cluster infrastructure (etcd, a registry),
+the trust root is a single **control host** that is (a) mostly **offline**,
+(b) **NAT-isolated** when offline, and (c) gated by a hardware security key with
+human-in-the-loop confirmation for the deploy SSH identity. The ultimate secret
+is the fleet SSH key — a fleet-wide root-SSH compromise compromises the fleet
+regardless, so that is the boundary worth hardening. This already beats a
+standard exposed-etcd setup.
+
+- **Registries are build-time only.** A registry is admissible **on the control
+  host** (it never faces the fleet), so native k8s build flows that assume a
+  registry are fine at build time. The *runtime* plane stays registry-less:
+  nodes receive images only by `podman image scp` over SSH. "No registry" was
+  always a runtime/inter-node rule, not a build-pipeline one.
+- **Image signatures are a later, low-priority hardening.** scp'd images are
+  trusted implicitly today; control-host compromise = fleet RCE, which is already
+  true via the fleet SSH key. Signing on the control host + verify-on-install
+  defends the *separate* "a worker forges/poisons an image" (worker-RCE) attack.
+- **Secrets: keyless nodes, decrypt at build/control-plane time.**
+  ansible-vault/sops on the offline control host while rendering the image/unit,
+  so no secret material lands on a node. Deferred until a workload needs it.
+
 ## Layers
 
 | Layer | Concern | Owner |
@@ -37,6 +60,28 @@ These are not negotiable; every decision below preserves them.
 
 Node and Build are supporting layers vz mostly consumes; the Fleet layer is the
 product.
+
+## Executors — one manifest, two backends
+
+Ansible is the universal executor. `vz apply` is a thin wrapper that validates
+the fleet, generates an Ansible inventory, and runs a playbook against a role —
+SSH is the only control channel, and Ansible is the executor across *all* of the
+operator's projects. `vztool` keeps only the two jobs Ansible can't do: the
+**validator** (loud rejection of unsupported k8s fields) and the diagnostic
+**`vz diff`**. The bootstrap and deploy Ansible trees are unified under
+`ansible/` (one `ansible.cfg`, one `roles/`, one `ssh.pub`).
+
+The same validated manifest runs on two backends:
+
+| Target | Executor | Control plane | Posture |
+|---|---|---|---|
+| dev / lab | `kubernetes.core.k8s` → **k3s** | real, bulky | insecure OK |
+| staging / prod | `podman_play` (Quadlet) over **SSH** (Ansible as "kubelet-by-SSH") | none — daemonless | lean, no attackable plane |
+
+The validator is **one rule-set, two hats**: a continuous lint over the
+desired-state repo *and* the CICD promotion gate. Config that prod can't honor is
+flagged loudly, never silently dropped — so the dev (k3s) target can't accept a
+manifest that would fail in prod.
 
 ## Desired state lives in git
 
