@@ -188,9 +188,10 @@ apply, and `vz diff` reports converged.
 
 - Application-layer reliability (e.g. stuck gearman jobs) — solved by proper
   queueing in the app, not by vz.
-- Differential layer transfer (xdelta/bsdiff) — Podman blob dedup across the
-  base/app split may already make this unnecessary; revisit only if measured WAN
-  cost demands it.
+- Differential layer transfer (xdelta/bsdiff, or the ephemeral registry) —
+  deferred. Whole-image `podman image scp` ships everything today, and blob dedup
+  does *not* help (OCI layer digests aren't reproducible across builds — see
+  "Image distribution"). Revisit only if measured WAN cost demands it.
 
 ## Node platform
 

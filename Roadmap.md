@@ -40,8 +40,10 @@ All the management software on the market is designed for latency-free,
 contention-free datacenters and fails when failover-consensus protocols — or
 even message queues — run over WAN. But WAN distribution is essential for
 disaster recovery and high availability: a service spread across regions or
-providers. vz assumes WAN from the start — no consensus, no pull-from-registry;
-images are *pushed*, minified, and layered so an update ships only what changed.
+providers. vz assumes WAN from the start — no consensus, no pull-from-registry; images are
+*pushed*, not pulled, and minified. At the horizon: layering so an update ships
+only what changed — a delta path still deferred today (see
+[`SPEC-v3.md`](SPEC-v3.md), which is canonical on what actually ships now).
 
 Lightweight is the other half. A small per-node footprint (low RAM, minified
 images) keeps a complex multi-server service cheap enough for a single operator

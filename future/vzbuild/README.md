@@ -5,7 +5,8 @@ one front-end: a **traditional** minimal-runtime build (declared RPM closure →
 `FROM scratch`) and an opt-in **strace-trace minifier**. `oci.sh` wraps either
 result into the two-layer (base + app) OCI image `podman kube play` consumes.
 See [`../../SPEC-v3.md`](../../SPEC-v3.md) for where this sits in the pipeline and
-[`../../TASKS.md`](../../TASKS.md) (section C) for status and the size comparisons.
+[`../../TASKS.md`](../../TASKS.md) — "Build & minify" for status, "Minifier size
+takeaways" for the size comparisons.
 
 ## strace-trace (image minification)
 
@@ -43,4 +44,4 @@ The `spec` file is the input to building a minimal OCI rootfs. The minifier is
 Minification is **inherently unsafe** (a stripped `.so`, locale, or CA bundle can
 break at runtime), so it is strictly opt-in; the traditional back-end is the safe
 default. A containerized, rootless version of the minifier runs as a k8s build
-Job — see [`../../TASKS.md`](../../TASKS.md) section C.
+Job — see [`../../TASKS.md`](../../TASKS.md) "Build & minify".

@@ -28,10 +28,10 @@ node ../vztool/src/validate.ts groups.yaml
 # 2. Build images (writes OCI archives to ./out/):
 ./recipe.sh
 
-# 3. Push + converge (step 3, not yet implemented):
-#    vz apply        # podman image scp each image + copy manifest, run `podman kube play`
-#    vz ps           # fleet-wide actual state
-#    vz diff         # desired (this repo) minus actual
+# 3. Push + converge (run from vztool, like step 1 — no bare `vz` shim yet):
+#    node ../vztool/src/apply.ts groups.yaml  # image scp each image + manifest, run `podman kube play`
+#    node ../vztool/src/ps.ts    groups.yaml  # fleet-wide actual state
+#    node ../vztool/src/diff.ts  groups.yaml  # desired (this repo) minus actual
 ```
 
 Pods reference images as `localhost/<name>:<tag>` with `imagePullPolicy: Never`;
