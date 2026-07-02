@@ -3,13 +3,15 @@
 # replacement for setup-master-{nat,dhcp}.sh (which were Alpine apk/rc-update).
 # Idempotent; reports real changed/ok. Connects as root (handoff contract).
 
-- name: IPv4 forwarding (persistent + live) — the kernel half of routing
-  ansible.posix.sysctl:
-    name: net.ipv4.ip_forward
-    value: "1"
-    sysctl_file: /etc/sysctl.d/00-vz-gateway.conf
-    state: present
-    reload: true
+# The kernel half of routing. Written as a drop-in with ansible.builtin so the
+# role needs no external collection (ansible-core on the gateway ships none, and
+# it's one setting) — copy is idempotent, the handler applies it live on change.
+- name: IPv4 forwarding (persistent)
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/00-vz-gateway.conf
+    content: "net.ipv4.ip_forward = 1\n"
+    mode: "0644"
+  notify: apply sysctl
 
 - name: gateway packages — nftables for NAT, dnsmasq for DHCP
   ansible.builtin.dnf:
