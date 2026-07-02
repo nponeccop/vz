@@ -1,63 +1,49 @@
-# Long-term Vision
+# Long-term vision
 
-VZ strives to become a  management middleware for secure libertarian enterprise universal lightweight WAN clusters.
+vz aims to be management middleware for **secure, libertarian, lightweight WAN
+clusters** — the north star behind the concrete v3 design. This is the *why at
+the horizon*; the invariants it commits us to are stated canonically (and kept
+current) in [`SPEC-v3.md`](SPEC-v3.md), and the near-term pitch is in
+[`README.md`](README.md).
 
 ## Secure cluster
 
 ### Damage localization
 
-There is a general secure design principle that once the system is compromised in one place, the design 
-should prevent further spreading of the attack. It's easy to see that for example CoreOS Fleet is the opposite of that. 
-If a single node is hacked the attacker gets the addresses of all other nodes in the cluster and can install arbitrary privileged malware 
-everywhere.
+Once a system is compromised in one place, the design should stop the attack
+from spreading further. CoreOS Fleet is the counter-example: hack one node and
+the attacker gets the addresses of every other node and can install privileged
+malware fleet-wide. vz keeps desired state **only on the control host**, so a
+compromised node leaks nothing about the rest of the fleet.
 
 ### No management components to attack
 
-Another principle is minimization of attack surface. All cluster management systems on the market expose the central 
-manager and in many cases node management interface to the attacker. Think of buffer overflow or a vulnerable TLS implementation 
-in CoreOS etcd, or attacks on centralized logging  server or monitoring/management agents on cluster nodes.
+Minimize the attack surface. Every cluster manager on the market exposes a
+central manager — and often a node-side agent — to the attacker: a buffer
+overflow or a vulnerable TLS stack in etcd, a centralized logging server,
+monitoring/management agents on each node. vz nodes run only `init`, `sshd`, and
+`systemd`; there is no management daemon to attack.
 
 ## Libertarian cluster
 
-Basically it means a cluster resistant to shutdown by governments. Imagine something white-hat like 
-WikiLeaks running multiple mirrors in a CoreOS cluster. Once one node is discovered and imaged by FBI, all the nodes can 
-be discovered, imaged and shut down by confiscation orders to respective providers.
+A cluster resistant to shutdown by governments. Imagine a white-hat mirror set
+(something WikiLeaks-like) spread across providers: with a CoreOS-style cluster,
+once one node is discovered and imaged, all the others can be found and taken
+down by confiscation orders to their respective providers. Damage localization
+is exactly what prevents that — so this is really just a stronger form of the
+same principle, not a purely anti-government feature. It serves mainstream,
+security-savvy users just as well.
 
-Note that this is essentially just strenghtening of the Damage Localization principle. It is not purely anti-government feature
-which many may regard as shady, but also serves damage localization for mainstream pro-government security-savvy enterprise users.
+## Lightweight WAN cluster
 
-## Enterprise Cluster
+All the management software on the market is designed for latency-free,
+contention-free datacenters and fails when failover-consensus protocols — or
+even message queues — run over WAN. But WAN distribution is essential for
+disaster recovery and high availability: a service spread across regions or
+providers. vz assumes WAN from the start — no consensus, no pull-from-registry;
+images are *pushed*, minified, and layered so an update ships only what changed.
 
-### Stability over Cutting Edge
-
-For enterprises stability is important, so they run software commonly considered outdated, such as CentOS 6 and even 5, and their
-RHEL flavours. This generally prevents them from using modern technologies such as Docker and other LXC-based containers, but once stable and widely approved, features get backported.
-
-### Fixed Dictated Platforms
-
-We can't force an enterprise to change the platform it has been running. For example, we can't invent our own distribution of Linux, or can't drop support for hypervisors and architectures considered exotic by the open-source community, such as 32-bit systems, VMware ESXi, Citrix XenServer, Microsoft Hyper-V.
-
-### Wide-scale Automated Management
-
-Enterpises typically deploy some form of automated management (e.g. configuration management). So we can't just drop their solution and invent our own management framework, but must piggyback on what they have. 
-
-### Legacy, RedHat, Microsoft-friendly
-
-They may go as far (in the eyes of Linux/GNU fanboys) as using Microsoft OMI to control their RHEL installations from Microsoft SysCenter. OpenPegasus mentions OpenVMS (a non-UNIX OS) in the list of supported systems etc. 
-
-### High Chances of Acquisition
-
-In the long run we want to become a part of central management portfolio of an enterprise vendor such as HPE, Oracle or RedHat.
-
-## Universal Lightweight Cluster
-
-### Lightweight Management
-
-### Weak Containers for LTS Versions of Linux
-
-## WAN cluster
-
-All the management software on the market is designed for contention and latency-free datacenters and fails miserably when
-failover consensus protocols or even message queues are run over WAN. And these days WAN distribution is essential for disaster
-recovery and high availability. Think of a web site running in different Amazon datacenters, or availability zones in their parlance.
-
+Lightweight is the other half. A small per-node footprint (low RAM, minified
+images) keeps a complex multi-server service cheap enough for a single operator
+to run for years — the affordability that makes the distributed, vendor-
+independent shape practical rather than just principled.
