@@ -1,0 +1,19 @@
+---
+- name: find the vmid
+  ansible.builtin.raw: "vim-cmd vmsvc/getallvms | awk '$2==\"{{ vm_name }}\"{print $1}'"
+  register: found
+  changed_when: false
+
+- name: power off + unregister
+  ansible.builtin.raw: "vim-cmd vmsvc/power.off {{ found.stdout | trim }}; vim-cmd vmsvc/unregister {{ found.stdout | trim }}"
+  when: found.stdout | trim | length > 0
+  failed_when: false
+  changed_when: true
+
+- name: delete the VM directory + seed ISO
+  ansible.builtin.raw: "rm -rf {{ datastore }}/{{ vm_name }} {{ datastore }}/images/{{ vm_name }}-seed.iso"
+  changed_when: true
+
+- name: destroyed
+  ansible.builtin.debug:
+    msg: "destroyed {{ vm_name }} (any DHCP lease will expire on its own)"

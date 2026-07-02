@@ -1,0 +1,24 @@
+#cloud-config
+# Minimal handoff: root reachable over SSH with the deploy key. Networking via lab
+# DHCP (workers) or the static network-config (gateway). open-vm-tools is the one
+# baked-in package: it is hypervisor-specific (ESXi needs the guest agent for IP
+# reporting and graceful shutdown), so it belongs to the ESXi seed, not to the
+# provider-agnostic ansible bootstrap.
+disable_root: false
+ssh_pwauth: false
+users:
+  - default
+  - name: root
+    ssh_authorized_keys:
+      - {{ deploy_key }}
+packages:
+  - open-vm-tools
+write_files:
+  - path: /etc/ssh/sshd_config.d/00-vz-root.conf
+    permissions: '0600'
+    content: |
+      PermitRootLogin prohibit-password
+      PubkeyAuthentication yes
+runcmd:
+  - [ systemctl, enable, --now, vmtoolsd ]
+  - [ systemctl, restart, sshd ]

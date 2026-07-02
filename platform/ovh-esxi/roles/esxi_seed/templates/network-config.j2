@@ -1,0 +1,24 @@
+version: 2
+ethernets:
+  ext:
+    match:
+      macaddress: "{{ ovh_mac | lower }}"
+    set-name: ext
+    addresses:
+      - {{ pub_addr }}/{{ pub_prefix }}
+    routes:
+      # 0.0.0.0/0 (NOT netplan's "default" shorthand — cloud-init 24.4 on Rocky
+      # rejects the literal "default" as an invalid IP and voids the whole config).
+      # on-link: an OVH failover IP is a /32 whose gateway (the .254 of the host's
+      # main /24) is outside the VM's subnet, so it is reachable directly on the link.
+      - to: 0.0.0.0/0
+        via: {{ pub_gw }}
+        on-link: true
+    nameservers:
+      addresses: [{{ pub_dns }}]
+  int:
+    match:
+      macaddress: "{{ int_mac | lower }}"
+    set-name: int
+    addresses:
+      - {{ int_addr }}/{{ int_cidr.split('/')[1] }}

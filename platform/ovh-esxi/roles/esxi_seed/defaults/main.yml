@@ -1,0 +1,42 @@
+---
+# esxi_seed defaults — the config surface that replaces config.env. Override the
+# site-specific values in platform/ovh-esxi/config.yml (gitignored; copy from
+# config.example.yml). Per-VM params (vm_name, vm_role, vm_boot, state) are passed
+# as -e extra-vars.
+
+# --- ESXi / datastore ---
+datastore: /vmfs/volumes/datastore1
+base_vmdk: "{{ datastore }}/images/Rocky-9-base.vmdk"   # golden clone source
+
+# --- VM sizing ---
+vm_mem: 2048
+vm_cpus: 1
+vm_disk: ""            # grow the cloned root disk to this (e.g. 40G) so cloud-init
+                       # growpart fills it; "" = keep the golden image's size.
+
+# --- networking ---
+portgroup: Internal                 # worker NIC / gateway internal NIC portgroup
+pub_portgroup: "VM Network"         # gateway public uplink portgroup
+
+# --- per-VM params (override with -e) ---
+vm_name: ""            # required
+vm_role: worker        # worker | gateway
+vm_boot: true          # false = build + register but don't power on (genesis handoff)
+state: present         # present | absent
+
+# --- gateway-only (required when vm_role == gateway) ---
+ovh_mac: ""            # OVH virtual MAC for the public NIC
+pub_addr: ""           # gateway public (failover) IP
+pub_prefix: 32         # OVH failover IPs are /32
+pub_gw: ""             # provider default gateway (on-link — the .254 of the main /24)
+pub_dns: 8.8.8.8
+int_net: "10.10.10"                        # /24 prefix for the Internal segment
+int_addr: "{{ int_net }}.1"                # gateway's Internal-side address (derived)
+int_cidr: "{{ int_net }}.0/24"             # Internal network (derived)
+int_mac: "00:50:56:10:10:01"               # Internal NIC MAC (VMware OUI range)
+
+# --- deploy key ---
+ssh_pub: "{{ playbook_dir }}/../../ansible/ssh.pub"
+
+# local workdir for building seed ISOs (on the control host)
+seed_work: "/tmp/ovh-esxi-seeds"

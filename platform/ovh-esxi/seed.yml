@@ -1,0 +1,23 @@
+---
+# esxi_seed — stamp (or destroy) a Rocky VM on ESXi over SSH. Replaces the
+# make-rocky-vm.sh shell seeder. SSH-only: no SOAP/API (an always-on management
+# API is an attack surface, same objection as a runtime registry). ESXi is driven
+# with `raw`, so it needs nothing but a shell; the cloud-init seed ISO is built
+# locally (xorrisofs) and scp'd over.
+#
+#   # gateway (static both NICs), built but NOT powered on — the genesis handoff:
+#   ansible-playbook -i inventory.ini seed.yml -e vm_name=gateway -e vm_role=gateway -e vm_boot=false
+#   # worker (DHCP on the Internal net), prints its IP:
+#   ansible-playbook -i inventory.ini seed.yml -e vm_name=node1
+#   # destroy:
+#   ansible-playbook -i inventory.ini seed.yml -e vm_name=node1 -e state=absent
+#
+# Reaches ESXi with the operator's forwarded SSH agent (CAPI smart card) — no key
+# on disk. Site config: copy config.example.yml -> config.yml (gitignored).
+- name: seed a Rocky VM on ESXi
+  hosts: esxi
+  gather_facts: false
+  vars_files:
+    - config.yml
+  roles:
+    - esxi_seed

@@ -1,0 +1,49 @@
+---
+# genconfig.yml — generate the seeder's config.yml + inventory.ini by introspecting
+# THIS (bootstrap) host. At genesis the gateway reuses the bootstrap host's failover
+# IP/MAC/gateway, so we read them straight off its default route — no hand-entry.
+# Run on the bootstrap Alpine host (needs iproute2 for network facts):
+#
+#   ansible-playbook -i localhost, -c local genconfig.yml -e esxi_host=<ESXi IP or name>
+#
+# Rules (per the bootstrap design): mac/addr/gw come from the bootstrap host, the
+# datastore is datastore1, and the Internal /24 is random (from /dev/random) so a
+# test gateway can't collide with a production 10.10.10 net.
+- name: generate the ESXi seeder config from the bootstrap host
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - name: esxi_host is required
+      ansible.builtin.assert:
+        that: esxi_host | default('') | length > 0
+        fail_msg: "pass -e esxi_host=<ESXi management IP or hostname>"
+        quiet: true
+
+    - name: capture the public NIC (from this host) + a random Internal /24
+      ansible.builtin.set_fact:
+        gen_ovh_mac: "{{ ansible_default_ipv4.macaddress }}"
+        gen_pub_addr: "{{ ansible_default_ipv4.address }}"
+        gen_pub_gw: "{{ ansible_default_ipv4.gateway }}"
+        gen_int_net: "10.{{ lookup('pipe', 'od -An -N1 -tu1 /dev/random') | trim }}.{{ lookup('pipe', 'od -An -N1 -tu1 /dev/random') | trim }}"
+
+    - name: render config.yml
+      ansible.builtin.template:
+        src: config.yml.j2
+        dest: "{{ playbook_dir }}/config.yml"
+        mode: "0644"
+
+    - name: render inventory.ini
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/inventory.ini"
+        mode: "0644"
+        content: |
+          [esxi]
+          {{ esxi_host }} ansible_user=root
+
+    - name: captured — review, then run seed.yml
+      ansible.builtin.debug:
+        msg: >-
+          nic={{ ansible_default_ipv4.interface }} mac={{ gen_ovh_mac }}
+          addr={{ gen_pub_addr }} gw={{ gen_pub_gw }}
+          int_net={{ gen_int_net }} esxi={{ esxi_host }}

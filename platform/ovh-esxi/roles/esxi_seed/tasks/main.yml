@@ -1,0 +1,20 @@
+---
+- name: vm_name is required
+  ansible.builtin.assert:
+    that: vm_name | length > 0
+    fail_msg: "vm_name is required (-e vm_name=NAME)"
+    quiet: true
+
+- name: name is [a-zA-Z0-9_-]
+  ansible.builtin.assert:
+    that: vm_name is match('^[A-Za-z0-9_-]+$')
+    fail_msg: "vm_name must match [A-Za-z0-9_-]"
+    quiet: true
+
+- name: destroy
+  ansible.builtin.import_tasks: destroy.yml
+  when: state == 'absent'
+
+- name: create
+  ansible.builtin.import_tasks: create.yml
+  when: state != 'absent'

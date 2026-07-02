@@ -1,0 +1,194 @@
+---
+- name: gateway params present
+  ansible.builtin.assert:
+    that:
+      - ovh_mac | length > 0
+      - pub_addr | length > 0
+      - pub_gw | length > 0
+    fail_msg: "gateway mode (vm_role=gateway) needs ovh_mac, pub_addr and pub_gw"
+    quiet: true
+  when: vm_role == 'gateway'
+
+- name: load the deploy public key
+  ansible.builtin.set_fact:
+    deploy_key: "{{ lookup('file', ssh_pub) }}"
+
+# The seed cloud-config injects a single ssh_authorized_keys line, so the key file
+# must be exactly one key (the shell seeder broke silently on multi-line files).
+- name: deploy key is a single line
+  ansible.builtin.assert:
+    that: deploy_key.splitlines() | length == 1
+    fail_msg: "ssh_pub ({{ ssh_pub }}) must contain exactly one key line"
+    quiet: true
+
+# ---------------------------------------------------------------- preconditions
+- name: golden base image present on ESXi
+  ansible.builtin.raw: "test -f {{ base_vmdk }}"
+  register: base_check
+  changed_when: false
+  failed_when: base_check.rc != 0
+
+- name: refuse to clobber an existing VM directory
+  ansible.builtin.raw: "test ! -d {{ datastore }}/{{ vm_name }}"
+  register: dir_check
+  changed_when: false
+  failed_when: dir_check.rc != 0
+
+# ---------------------------------------------------------- build the seed ISO
+- name: seed workdir (local)
+  ansible.builtin.file:
+    path: "{{ seed_work }}/{{ vm_name }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+
+- name: render seed files (local)
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ seed_work }}/{{ vm_name }}/{{ item }}"
+    mode: "0644"
+  loop:
+    - meta-data
+    - user-data
+  delegate_to: localhost
+
+- name: render network-config for the gateway (static both NICs, local)
+  ansible.builtin.template:
+    src: network-config.j2
+    dest: "{{ seed_work }}/{{ vm_name }}/network-config"
+    mode: "0644"
+  when: vm_role == 'gateway'
+  delegate_to: localhost
+
+- name: validate the rendered cloud-config is YAML (local)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "import yaml,sys; yaml.safe_load(open(sys.argv[1]))"
+      - "{{ seed_work }}/{{ vm_name }}/user-data"
+  changed_when: false
+  delegate_to: localhost
+
+- name: build the CIDATA seed ISO (local)
+  ansible.builtin.command:
+    argv: >-
+      {{ ['xorrisofs', '-quiet', '-output', seed_work ~ '/' ~ vm_name ~ '/seed.iso',
+          '-volid', 'CIDATA', '-joliet', '-rock',
+          seed_work ~ '/' ~ vm_name ~ '/meta-data',
+          seed_work ~ '/' ~ vm_name ~ '/user-data']
+         + ([seed_work ~ '/' ~ vm_name ~ '/network-config'] if vm_role == 'gateway' else []) }}
+  changed_when: true
+  delegate_to: localhost
+
+# -O forces the legacy SCP protocol: ESXi's shell rejects OpenSSH 9's SFTP default.
+- name: copy the seed ISO to ESXi (local scp -O)
+  ansible.builtin.command:
+    argv:
+      - scp
+      - -O
+      - -q
+      - "{{ seed_work }}/{{ vm_name }}/seed.iso"
+      - "{{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }}:{{ datastore }}/images/{{ vm_name }}-seed.iso"
+  changed_when: true
+  delegate_to: localhost
+
+# ---------------------------------------------------- clone golden + write VMX
+- name: clone the golden image
+  ansible.builtin.raw: "mkdir -p {{ datastore }}/{{ vm_name }} && vmkfstools -i {{ base_vmdk }} -d thin {{ datastore }}/{{ vm_name }}/{{ vm_name }}.vmdk"
+  changed_when: true
+
+- name: grow the root disk (cloud-init growpart fills it on first boot)
+  ansible.builtin.raw: "vmkfstools -X {{ vm_disk }} {{ datastore }}/{{ vm_name }}/{{ vm_name }}.vmdk"
+  changed_when: true
+  when: vm_disk | length > 0
+
+- name: render the VMX (local)
+  ansible.builtin.template:
+    src: vmx.j2
+    dest: "{{ seed_work }}/{{ vm_name }}/{{ vm_name }}.vmx"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: copy the VMX to ESXi (local scp -O)
+  ansible.builtin.command:
+    argv:
+      - scp
+      - -O
+      - -q
+      - "{{ seed_work }}/{{ vm_name }}/{{ vm_name }}.vmx"
+      - "{{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }}:{{ datastore }}/{{ vm_name }}/{{ vm_name }}.vmx"
+  changed_when: true
+  delegate_to: localhost
+
+- name: register the VM
+  ansible.builtin.raw: "vim-cmd solo/registervm {{ datastore }}/{{ vm_name }}/{{ vm_name }}.vmx"
+  register: registervm
+  changed_when: true
+
+- name: capture the vmid
+  ansible.builtin.set_fact:
+    vmid: "{{ registervm.stdout | regex_search('[0-9]+') }}"
+
+- name: no-boot — built + registered, not powered on (genesis IP-handoff)
+  ansible.builtin.debug:
+    msg: >-
+      Built + registered {{ vm_name }} as vmid {{ vmid }} (NOT powered on).
+      Free the failover IP, then power on with:
+      ssh {{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }} vim-cmd vmsvc/power.on {{ vmid }}
+  when: not vm_boot
+
+- name: stop here when not booting
+  ansible.builtin.meta: end_host
+  when: not vm_boot
+
+- name: power on
+  ansible.builtin.raw: "vim-cmd vmsvc/power.on {{ vmid }}"
+  changed_when: true
+
+# ------------------------------------------------------------- resolve the IP
+- name: gateway has a static public IP (it serves DHCP — no lease to wait for)
+  ansible.builtin.set_fact:
+    vm_ip: "{{ pub_addr }}"
+  when: vm_role == 'gateway'
+
+# Workers: ask ESXi (via open-vm-tools, installed by the seed) for the guest IP on
+# the Internal net. Replaces the shell seeder's read-generated-MAC + parse the
+# gateway's dnsmasq.leases dance — one ESXi-native query, no leases file.
+- name: worker — wait for the guest IP on the Internal net
+  ansible.builtin.raw: "vim-cmd vmsvc/get.guest {{ vmid }} | grep -oE 'ipAddress = \"[0-9.]+\"' | grep -oE '[0-9.]+' | grep '^{{ int_net }}\\.' | head -1"
+  register: guest_ip
+  until: guest_ip.stdout | trim | length > 0
+  retries: 60
+  delay: 3
+  changed_when: false
+  when: vm_role != 'gateway'
+
+- name: worker — record the IP
+  ansible.builtin.set_fact:
+    vm_ip: "{{ guest_ip.stdout | trim }}"
+  when: vm_role != 'gateway'
+
+- name: wait for root SSH on the VM (local)
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -q
+      - -o
+      - StrictHostKeyChecking=no
+      - -o
+      - BatchMode=yes
+      - -o
+      - ConnectTimeout=5
+      - "root@{{ vm_ip }}"
+      - "true"
+  register: ssh_ready
+  until: ssh_ready.rc == 0
+  retries: 40
+  delay: 3
+  changed_when: false
+  delegate_to: localhost
+
+- name: VM ready
+  ansible.builtin.debug:
+    msg: "VM {{ vm_name }} ready: root@{{ vm_ip }}"

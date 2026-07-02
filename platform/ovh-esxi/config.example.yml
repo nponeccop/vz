@@ -1,0 +1,27 @@
+---
+# Site config for the ESXi seeder (esxi_seed). Copy to config.yml (gitignored) and
+# fill in. config.yml holds your lab specifics — never commit it.
+#
+#   cp config.example.yml config.yml && $EDITOR config.yml
+
+# --- ESXi / datastore ---
+datastore: /vmfs/volumes/datastore1
+# base_vmdk: "{{ datastore }}/images/Rocky-9-base.vmdk"   # override if elsewhere
+
+# --- VM sizing (per-VM overridable with -e vm_mem= / vm_cpus= / vm_disk=) ---
+vm_mem: 2048
+vm_cpus: 1
+vm_disk: ""            # e.g. 40G to grow the root disk; "" keeps the golden size
+
+# --- portgroups ---
+portgroup: Internal
+pub_portgroup: "VM Network"
+
+# --- gateway (vm_role=gateway) ---
+ovh_mac: ""            # OVH virtual MAC for the public NIC
+pub_addr: ""           # gateway public failover IP
+pub_prefix: 32         # OVH failover IPs are /32
+pub_gw: ""             # provider default gateway (on-link — the .254 of the main /24)
+pub_dns: 8.8.8.8
+int_net: "10.10.10"    # /24 prefix for the Internal segment (single knob)
+int_mac: "00:50:56:10:10:01"

@@ -138,8 +138,10 @@ The public half is the only secret the fleet ever holds. Put it at
 ### 3. Genesis part A — paste into ESXi's SSH
 
 SSH to ESXi as `root`. Its BusyBox **`wget --no-check-certificate`** fetches over
-HTTPS fine (no CA store, so verification is off — integrity comes from the pinned
-**sha256**), so **no Python and no pre-staged files** are needed. This snippet
+HTTPS fine (no CA store, so TLS verification is off — the **golden VMDK**'s
+integrity is restored by a pinned **sha256** check below; the throwaway Alpine ISO
+is left unverified, as it only boots a root shell into which you paste your *own*
+key), so **no Python and no pre-staged files** are needed. This snippet
 makes the isolated `Internal` vSwitch, fetches the golden VMDK + Alpine ISO,
 imports the golden VMDK to a base disk, and boots an Alpine live VM on the
 failover IP's virtual MAC:
@@ -147,13 +149,13 @@ failover IP's virtual MAC:
 ```sh
 DS=/vmfs/volumes/<datastore>
 OVH_MAC=<OVH-virtual-MAC>            # from step 2
-ALPINE_VERSION=3.21.0
+ALPINE_VERSION=3.24.1
 
 # (a) isolated internal network (no uplink) — the workers' segment
 esxcli network vswitch standard add -v vSwitch1
 esxcli network vswitch standard portgroup add -p Internal -v vSwitch1
 
-# (b) fetch golden VMDK + Alpine ISO (native wget; verify off + pinned sha256)
+# (b) fetch golden VMDK + Alpine ISO (native wget; TLS off — golden VMDK pinned by sha256 below)
 mkdir -p $DS/images $DS/iso
 wget --no-check-certificate -O $DS/images/golden.vmdk "<release-asset-url>/Rocky-9-...-x86_64.vmdk"
 echo "<pinned-sha256>  $DS/images/golden.vmdk" | sha256sum -c -
@@ -225,9 +227,13 @@ vim-cmd vmsvc/power.on "$(vim-cmd solo/registervm $DS/alpine-genesis/alpine-gene
 
 ### 4. Genesis part B — bring the bootstrap host online (browser: ESXi web console)
 
-Open the `alpine-genesis` console, log in as `root` (empty password). The
-failover IP is a `/32` whose gateway is off-subnet, so the default route must be
-**on-link**. Then install your key and start sshd:
+Open the `alpine-genesis` console, log in as `root` (empty password). The web
+console can't paste reliably and is miserable for typing, so use it for the bare
+minimum — bring up the network and `sshd` plus a throwaway `foo` user — then move
+to a real SSH terminal where paste works and let the smart card do the rest.
+
+The failover IP is a `/32` whose gateway is off-subnet, so the default route must
+be **on-link**:
 
 ```sh
 # --- network: failover /32 with on-link gateway ---
@@ -238,19 +244,66 @@ ip route add default via <gw>
 echo nameserver 8.8.8.8 > /etc/resolv.conf
 ping -c2 1.1.1.1                       # verify uplink
 
-# --- your key + sshd ---
+# --- sshd + a throwaway paste user (answer the password prompt) ---
 apk add openssh
-mkdir -p /root/.ssh && chmod 700 /root/.ssh
-cat > /root/.ssh/authorized_keys      # paste the line(s) from `ssh-add -L`, then Ctrl-D
-chmod 600 /root/.ssh/authorized_keys
 rc-update add sshd && service sshd start
+adduser foo
 ```
 
-The console is fine for a single **paste** (miserable for *typing* a 400-char
-key): run `ssh-add -L` on your workstation, copy the output, paste it into the
-`cat >` above. That is the only manual transfer in the whole bootstrap.
-(`ssh-copy-id`/agent-forwarding proved fragile through the web console — a plain
-paste is what actually works.)
+Now leave the console. SSH in **as `foo` with agent forwarding on** (PuTTY: enable
+agent forwarding; Pageant / PuTTY-CAC holds the smart-card key). The forwarded
+agent lets you capture your own public key without ever having to know it, and the
+same command lands it on the host:
+
+```sh
+ssh-add -L > keys                     # reveals the deploy pubkey AND writes it to ~foo/keys
+```
+
+Still as `foo`, paste `root.sh` into `~foo/root.sh` — a real terminal pastes
+cleanly, which is the whole reason we brought SSH up before touching any key:
+
+```sh
+cat > root.sh <<'EOF'
+#!/bin/sh
+# Promote foo's captured deploy key into root's space, so you can drop foo and
+# re-login as root over SSH — one session that is both root and carries the
+# forwarded CAPI agent the seeder needs to reach ESXi. foo is transient and gets
+# deleted below, so we also stash a durable copy of the pubkey for the seeder.
+set -eu
+install -d -m 700 /root/.ssh
+cat /home/foo/keys >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+install -m 644 /home/foo/keys /root/deploy.pub   # survives `deluser foo`; the seeder's ssh.pub
+echo "OK — re-login as root@<failover-IP> with agent forwarding"
+EOF
+```
+
+Back on the **console as root**, run it — short to type, which is the point (bare
+Alpine has only busybox, so use `sh`; `bash` isn't installed):
+
+```sh
+sh ~foo/root.sh
+```
+
+Then re-login as `root@<failover-IP>` (keep agent forwarding on) and confirm the
+session is both root and holds the card:
+
+```sh
+whoami        # root
+ssh-add -l    # the CAPI / smart-card identity is present
+```
+
+`foo` has done its one job (exposing the pubkey through the forwarded agent), so
+delete it now that root SSH works — this also removes `~foo/keys` (the durable copy
+is at `/root/deploy.pub`):
+
+```sh
+deluser foo ; rm -rf /home/foo
+```
+
+Root key-login relies on sshd's default `PermitRootLogin prohibit-password` (keys
+yes, passwords no). If you hardened it to `no`, add a `PermitRootLogin
+prohibit-password` drop-in and `rc-service sshd restart` before re-logging.
 
 ### 5. The bootstrap host builds the gateway, then hands off the IP
 
