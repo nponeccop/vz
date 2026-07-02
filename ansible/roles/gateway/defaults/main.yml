@@ -12,9 +12,15 @@
 gateway_ext_if: ext
 gateway_int_if: int
 
+# The /24 prefix for the isolated Internal segment — the single knob for the subnet.
+# Change it (here, via group_vars, or `-e gateway_int_net=10.20.30`) if 10.10.10.x
+# collides with another org network; everything below derives from it. Keep this in
+# sync with INT_NET in platform/ovh-esxi/config.env (the seed's static addressing).
+gateway_int_net: "10.10.10"
+
 # Internal DHCP pool handed to the workers. Mirrors the old setup-master-dhcp.sh:
 # DHCP-only (DNS disabled) — clients get a public resolver directly and route out
 # through this box's NAT.
-gateway_dhcp_range: 10.10.10.50,10.10.10.150,12h
-gateway_dhcp_router: 10.10.10.1
+gateway_dhcp_range: "{{ gateway_int_net }}.50,{{ gateway_int_net }}.150,12h"
+gateway_dhcp_router: "{{ gateway_int_net }}.1"
 gateway_dhcp_dns: 8.8.8.8

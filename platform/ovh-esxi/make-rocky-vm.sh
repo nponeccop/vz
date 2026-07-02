@@ -57,8 +57,11 @@ PUB_ADDR=${PUB_ADDR:-}                        # public IP of the gateway
 PUB_PREFIX=${PUB_PREFIX:-24}                  # public prefix length
 PUB_GW=${PUB_GW:-}                            # provider gateway (default route)
 PUB_DNS=${PUB_DNS:-8.8.8.8}                   # resolver for the gateway itself
-INT_ADDR=${INT_ADDR:-10.10.10.1}             # gateway's Internal-side address
-INT_CIDR=${INT_CIDR:-10.10.10.0/24}          # Internal network (prefix taken from here)
+INT_NET=${INT_NET:-10.10.10}                 # /24 prefix for the Internal segment —
+                                              # the single knob; change it if 10.10.10.x
+                                              # collides with another org network.
+INT_ADDR=${INT_ADDR:-$INT_NET.1}             # gateway's Internal-side address (derived)
+INT_CIDR=${INT_CIDR:-$INT_NET.0/24}          # Internal network (derived)
 INT_MAC=${INT_MAC:-00:50:56:10:10:01}        # Internal NIC MAC (VMware OUI range)
 GATEWAY=0
 # MACs lowercased for deterministic cloud-init `match: macaddress`.
@@ -151,8 +154,14 @@ ethernets:
     addresses:
       - $PUB_ADDR/$PUB_PREFIX
     routes:
-      - to: default
+      # 0.0.0.0/0 (NOT netplan's "default" shorthand — cloud-init 24.4 on Rocky
+      # rejects the literal "default" as an invalid IP and voids the whole config).
+      # on-link: an OVH failover IP is a /32 whose gateway (the .254 of the host's
+      # main /24) is outside the VM's subnet, so the gateway is reachable directly
+      # on the link even though it is not in the address range.
+      - to: 0.0.0.0/0
         via: $PUB_GW
+        on-link: true
     nameservers:
       addresses: [$PUB_DNS]
   int:

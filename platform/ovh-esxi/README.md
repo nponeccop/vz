@@ -19,33 +19,120 @@ Not reboot-survival, not a running pod — a successful push.
 
 ---
 
+## Bootstrapping from zero (the operator's path)
+
+**What you need on your own machine:** a web browser, an SSH client, and one SSH
+keypair. That is *it* — **no Ansible, no local ESXi/OVH tooling, no build toolchain.**
+Everything heavy (Ansible, the golden-image pipeline, the fleet control loop) runs *on
+the gateway* once it exists; your workstation only ever opens a browser and an SSH
+session. The barrier to entry is deliberately "can you SSH and click a web UI".
+
+The flow is four moves: **make a key → order + install ESXi (browser) → paste a genesis
+snippet into ESXi's SSH → SSH into the gateway, which becomes the control host for
+everything else.**
+
+### 1. Generate a deploy key (workstation, once)
+
+```sh
+ssh-keygen -t ed25519 -C vz-deploy
+```
+
+The public half is the *only* secret the fleet ever holds; the private half stays in your
+agent / YubiKey (see the sleeping-plane model below). Put the public key at
+`ansible/ssh.pub` in the repo.
+
+### 2. Order + install the server (browser — OVH/Kimsufi manager)
+
+- Order a Kimsufi / So-you-Start dedicated server and install the **ESXi** OS template,
+  pasting your public key (or setting a root password) in the installer.
+- Order **one additional/failover IP** for the gateway; **generate its virtual MAC**
+  (type `vmware`) and set its **reverse DNS**. This is the one irreducible out-of-band
+  step — an extra public IP must be bought and MAC-bound at the provider. *(The
+  `ovhcloud` CLI can manage these but not order them; ordering is a manager/cart action.
+  Virtual-MAC creation is `POST /dedicated/server/{sn}/virtualMac` if you prefer the API.)*
+
+### 3. Genesis: SSH to ESXi and paste some commands
+
+SSH to the ESXi host as `root` and paste the genesis snippet. It (a) creates an isolated
+`Internal` vSwitch/portgroup for the workers, (b) fetches the pinned golden VMDK from the
+GitHub release and verifies it by sha256, (c) imports it to a read-only base disk:
+
+```sh
+# (a) isolated internal network (no uplink) — the workers' segment
+esxcli network vswitch standard add -v vSwitch1
+esxcli network vswitch standard portgroup add -p Internal -v vSwitch1
+
+# (b) fetch the golden VMDK. ESXi has no CA store and its BusyBox wget segfaults on TLS,
+#     so fetch with python3 (verify OFF) and trust the pinned sha256 instead.
+cd /vmfs/volumes/<datastore>/images
+python3 - <<'PY'
+import ssl, urllib.request, hashlib
+url  = "<release-asset-url>/Rocky-9-GenericCloud-<ver>.x86_64.vmdk"
+want = "<pinned-sha256>"
+ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+data = urllib.request.urlopen(url, context=ctx, timeout=180).read()
+got = hashlib.sha256(data).hexdigest()
+assert got == want, f"sha256 mismatch: {got} != {want}"
+open("golden.vmdk", "wb").write(data); print("verified", got)
+PY
+
+# (c) import to a thin base disk (cloned per VM thereafter)
+vmkfstools -i golden.vmdk -d thin Rocky-9-base.vmdk
+```
+
+Then stamp the **gateway** — the single VM with a *static* seed (your key + the failover
+IP and its virtual MAC on the public portgroup, and a static internal `10.10.10.1`):
+
+```sh
+make-rocky-vm.sh -g gateway    # ext = failover IP + virtual MAC (/32, on-link), int = 10.10.10.1
+```
+
+`make-rocky-vm.sh` is a portable POSIX shell script that talks to ESXi *over SSH* (it does
+not run on ESXi); it needs only `ssh`, `scp`, and `xorrisofs` to build the tiny cloud-init
+seed. Its inputs (datastore, portgroups, failover IP, virtual MAC, internal subnet) come
+from `config.env` — copy `config.env.example` and fill the `PUB_*` / `OVH_MAC` values from
+step 2.
+
+### 4. The gateway becomes the control host
+
+SSH to `root@<failover-IP>` — a clean Rocky with your key (the handoff contract). From
+here **the gateway is the control host**; you install Ansible *there*, never on your
+laptop, and it drives the rest of the fleet:
+
+```sh
+dnf -y install git ansible-core
+git clone <repo> vz && cd vz/ansible
+ansible-playbook -i '<failover-IP>,' gateway.yaml   # NAT + DHCP for the Internal segment
+```
+
+Now the Internal segment has DHCP and a route to the internet, so the handoff contract
+holds for every future VM. Stamp workers with `make-rocky-vm.sh nodeN` and manage them
+with `bootstrap.sh` / `vz apply` — all from the gateway. The layers below detail each
+piece; this section is the linear path through them.
+
+---
+
 ## This folder
 
 Tooling that stands up the lab and provisions Rocky VMs on OVH/ESXi.
 
 | File | What it does | Runs on |
 |------|--------------|---------|
-| `setup-master-sudo.sh` | Passwordless sudo for a user (wheel group) | master, as root |
-| `setup-master-nat.sh` | Master → NAT gateway on the Internal vSwitch | master, as root |
-| `setup-master-dhcp.sh` | Master → DHCP server for the Internal vSwitch | master, as root |
-| `make-rocky-vm.sh` | Create/destroy a Rocky 9 VM satisfying the handoff contract | master |
-| `fix-ssh-agent.sh` | Re-point the shell at the rotated forwarded agent socket | master |
+| `make-rocky-vm.sh` | Create/destroy a Rocky VM over SSH-to-ESXi; `-g` = the static-network gateway | anywhere that can SSH to ESXi |
 | `config.env.example` | Site config template — copy to `config.env` (gitignored) | — |
+| `fix-ssh-agent.sh` | Re-point the shell at the rotated forwarded agent socket | control host |
+| `../golden-image/build-golden-vmdk.sh` + `.github/workflows/golden-image.yml` | CI: build + publish the golden VMDK (Job A) | GitHub Actions |
+| `../../ansible/gateway.yaml` (role `roles/gateway`) | Make a booted clone the NAT/DHCP gateway (Job B) | control host |
+| ~~`setup-master-{sudo,nat,dhcp}.sh`~~ | *Legacy Alpine master scripts — superseded by the `gateway` role; kept until the real gateway boot is validated, then removed* | — |
 
-**Quickstart (once the master VM exists with the deploy key authorized):**
+**Quickstart** — see **[Bootstrapping from zero](#bootstrapping-from-zero-the-operators-path)** above for the full path. The disposable-VM loop for iterating on the bootstrap:
 
 ```sh
-cp config.env.example config.env && $EDITOR config.env   # set ESXI, datastore, subnet
-sudo ./setup-master-sudo.sh
-sudo ./setup-master-nat.sh
-sudo ./setup-master-dhcp.sh
-# build the golden image once (see "golden image" in Layer 1), then:
-ip=$(./make-rocky-vm.sh node1)        # prints the VM's IP when root SSH is up
+cp config.env.example config.env && $EDITOR config.env   # ESXI, datastore, subnet, PUB_*/OVH_MAC
+ip=$(./make-rocky-vm.sh node1)        # clone golden → DHCP worker; prints IP when root SSH is up
+# run ansible against $ip, then:
 ./make-rocky-vm.sh -d node1           # tear it down
 ```
-
-`make-rocky-vm.sh` is the disposable-VM loop for iterating on the bootstrap:
-`ip=$(make-rocky-vm.sh n1)` → run ansible against `$ip` → `make-rocky-vm.sh -d n1`.
 
 ---
 
@@ -134,10 +221,10 @@ ESXi" chicken-and-egg. Cheap, and it removes the "we never checked the ISO" habi
 3. ✅ **confirmed** — `/bin/python3` fetched a file from GitHub over HTTPS; `httpClient`
    firewall already open. Caveats baked into the design: **wget segfaults on TLS**
    (python only), **no CA store** (verify off + pinned sha256).
-4. ✅ **built** — `make-rocky-vm.sh -g NAME` produces the static-gateway clone, and the
-   ansible **`gateway`** role configures it. Clone + seed + cloud-init were already
-   proven; only the static-gateway seed variant + role were new. Awaiting a real boot
-   (needs the OVH public IP + virtual MAC — the accepted out-of-band step).
+4. ✅ **validated on real hardware (2026-07-02)** — `make-rocky-vm.sh -g gateway` booted a
+   golden clone with the failover IP + its virtual MAC on `ext` and `10.10.10.1` on `int`;
+   the ansible **`gateway`** role brought up NAT + DHCP (`changed=0` on re-run — idempotent),
+   and a worker regained internet through it. It replaced the Alpine master live.
 
 **The gateway clone, as built.** `make-rocky-vm.sh -g` differs from a worker in three
 places: the seed carries a NoCloud **network-config v2** that statically addresses both
@@ -155,8 +242,19 @@ fight nftables for the ruleset); workers keep it.
 asset → ESXi `/bin/python3` fetch (verify off) → **sha256 MATCH** → `vmkfstools -i … -d
 thin` → valid 10 G VMFS disk. The pipeline lives at `platform/golden-image/` +
 `.github/workflows/golden-image.yml` (self-contained, for extraction to an image-only
-repo). The genesis chain is fully implemented; only a real gateway boot remains to close
-the loop.
+repo).
+
+**Whole chain proven on real hardware (2026-07-02).** CI golden image → ESXi import →
+`make-rocky-vm.sh -g gateway` (failover IP + virtual MAC on `ext`, `10.10.10.1` on `int`)
+→ ansible `gateway` role (NAT + DHCP, idempotent) → the Rocky gateway replaced the Alpine
+master, and a worker regained internet through it. Two OVH-specific gotchas learned:
+the failover IP is a **/32 whose gateway is off-subnet**, so the default route needs
+`on-link` (netplan `to: 0.0.0.0/0`, **not** `to: default` — cloud-init 24.4 rejects the
+`default` shorthand and voids the whole network-config); and the public NIC needs
+`ethernet0.checkMACAddress = "FALSE"` for ESXi to accept the OVH virtual MAC. Alpine no
+longer serves NAT/DHCP (moved to `10.10.10.2`, dnsmasq off); it remains only the
+transitional operator/control host and is decommissioned once control moves onto the
+gateway.
 
 ---
 
@@ -317,7 +415,7 @@ OVH's API endpoint follows the **account's** OVH entity, *not* the physical serv
 | 5 | Generalize Layer 1 to DigitalOcean / Vultr | 1 | Bonus | 2–3 stable |
 | 6 | OVH API automation (order server/IP, reverse DNS) | 0 | Bonus | `ovhcloud` CLI configured |
 | 7 | **Golden image via CI** — `qcow2 → streamOptimized VMDK` pinned release artifact | 0 | **Done** — proven end-to-end on ESXi 8.0.3 | CI-quota spike ✅ |
-| 8 | **Gateway = golden clone + ansible `gateway` role** (retires Alpine + `setup-master-*.sh`) | 0 | **Built** — awaiting a real gateway boot | 7 + ESXi-fetch spike ✅ |
+| 8 | **Gateway = golden clone + ansible `gateway` role** (retires Alpine + `setup-master-*.sh`) | 0 | **Done** — booted on real HW 2026-07-02; replaced Alpine live | 7 + ESXi-fetch spike ✅ |
 
 ---
 

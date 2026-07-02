@@ -278,9 +278,11 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
         (c) ✅ **TLS-fetch confirmed** via `/bin/python3` (3.11) — but **BusyBox `wget`
         segfaults on TLS** (so python, not wget) and **no CA store** (fetch with verify
         off + pinned **sha256** for integrity); `httpClient` firewall already enabled.
-        (d) ✅ **built** — `make-rocky-vm.sh -g` (static both-NIC seed + two-NIC VMX with
-        the OVH virtual MAC pinned) + ansible `gateway` role; awaiting a real boot (needs
-        the OVH public IP + virtual MAC, the out-of-band step).
+        (d) ✅ **validated on real HW 2026-07-02** — `make-rocky-vm.sh -g gateway` (static
+        both-NIC seed + two-NIC VMX, OVH virtual MAC pinned) + ansible `gateway` role
+        (idempotent); the Rocky gateway replaced the Alpine master live and a worker
+        regained internet. OVH gotchas: /32 needs `on-link` + `to: 0.0.0.0/0` (not
+        `default`); public NIC needs `checkMACAddress=FALSE`.
         **End-to-end proven 2026-06-30**: CI build → 597 MB release asset → ESXi python3
         fetch → sha256 MATCH → `vmkfstools -i` → valid 10 G VMFS disk. (a)+(b)+(c) closed
         with the real artifact; (d) implemented, only a real gateway boot remains.
@@ -295,7 +297,8 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
   - [ ] **Provenance**: verify the artifact hash **off-ESXi** — at the workstation on
         upload, or on the gateway once up — never on ESXi (fixes the "never checked the
         ISO" habit; avoids a verify-on-ESXi chicken-and-egg).
-  - [~] **Gateway as golden clone** — built, awaiting a real boot. ansible **`gateway`
+  - [x] **Gateway as golden clone** — ✅ booted + validated on real HW 2026-07-02
+        (replaced the Alpine master live; role idempotent). ansible **`gateway`
         role** (`ansible/roles/gateway` + `ansible/gateway.yaml`): IPv4 forwarding +
         **nftables** NAT masquerade + **dnsmasq** DHCP, the RHEL-native replacement for
         `setup-master-{nat,dhcp}.sh` (firewalld retired on the gateway only; HTTPS reverse
