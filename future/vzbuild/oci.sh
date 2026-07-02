@@ -4,9 +4,10 @@
 #
 # This is the v3 wrap step the v2 pipeline lacked: v2 produced a bare rootfs
 # tarball, which `podman kube play` cannot consume. See SPEC-v3.md ("Image
-# distribution"). Images are built in two layers so a source edit ships only
-# the small app layer:
-#   base  — minified rootfs (runtime + libs); big, rare changes, pushed once
+# distribution"). Images are built in two layers so a source edit only rebuilds
+# the small app layer (a local rebuild-speed convenience — NOT a WAN saving; vz
+# pushes whole images with `podman image scp`, so the base rides along anyway):
+#   base  — minified rootfs (runtime + libs); big, changes rarely
 #   app   — application source; tiny, changes often
 #
 # Refs should be localhost/<name>:<tag> to match the push model

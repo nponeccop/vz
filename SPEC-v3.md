@@ -22,8 +22,9 @@ These are not negotiable; every decision below preserves them.
   shared registry and no cluster membership. Desired state lives **only** on the
   control host. Compromising one node leaks nothing about the fleet.
 - **WAN-first.** Everything assumes high-latency, lossy links. No consensus, no
-  pull-from-registry. Images are *pushed*, minified, and layered so an update
-  ships only what changed.
+  pull-from-registry. Images are *pushed*, not pulled, and minified to keep each
+  transfer small. (Layering is a local rebuild-speed convenience, not a
+  transfer delta today — see "Image distribution".)
 
 ## Trust model — the control host is our registry + etcd
 

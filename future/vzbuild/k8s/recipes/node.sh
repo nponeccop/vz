@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # recipes/node.sh — minify the node.js worker RUNTIME base via the build-Job flow.
 #
-# This produces the node-base layer (SPEC-v3.md "Two layers: base + app"): the
+# This produces the node-base layer (SPEC-v3.md "Image distribution"): the
 # node runtime + the shared libs / data files it loads, with NO application code.
 # The worker's own source and node_modules ship in the small app layer on top, so
 # this base only has to carry node's runtime closure.

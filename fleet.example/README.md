@@ -29,7 +29,7 @@ node ../vztool/src/validate.ts groups.yaml
 ./recipe.sh
 
 # 3. Push + converge (step 3, not yet implemented):
-#    vz apply        # push changed layers + manifest, run `podman kube play`
+#    vz apply        # podman image scp each image + copy manifest, run `podman kube play`
 #    vz ps           # fleet-wide actual state
 #    vz diff         # desired (this repo) minus actual
 ```
