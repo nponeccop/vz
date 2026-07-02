@@ -196,11 +196,12 @@ apply, and `vz diff` reports converged.
 
 Nodes are **Rocky Linux 9 only** in v3. Everything the node needs is available
 from stock appstream (`podman` — which bundles Quadlet at
-`/usr/libexec/podman/quadlet` plus the systemd generator — `skopeo`, `buildah`,
+`/usr/libexec/podman/quadlet` plus the systemd generator — `skopeo`, and
 cgroups v2), with no third-party repos. None of it is installed by default;
 bootstrap installs it and enables rootless persistence:
 
-- `dnf install podman skopeo buildah`
+- `dnf install podman skopeo` — `buildah` is a build-time tool and lives on the
+  control host (see below), not the node.
 - `loginctl enable-linger <user>` — **required**: rootless pods are owned by the
   deploy user's systemd manager. Without linger, closing the `vz apply` SSH
   session tears the pod down (observed: SIGKILL / exit 137). Linger keeps the

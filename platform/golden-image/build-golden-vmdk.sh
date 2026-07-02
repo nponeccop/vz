@@ -4,9 +4,9 @@
 # sha256 for the output.
 #
 # The output sha256 is the integrity anchor the ESXi-side fetch trusts: ESXi 8 has no
-# CA trust store and its BusyBox wget segfaults on TLS, so the genesis flow fetches via
-# python3 with cert verification OFF and verifies this hash instead (see
-# platform/ovh-esxi/README.md "Layer 0").
+# CA trust store, so the genesis flow fetches via BusyBox wget with cert verification
+# OFF (--no-check-certificate) and verifies this hash instead (see
+# platform/ovh-esxi/README.md "Genesis").
 #
 # Provider-agnostic: runs in GitHub Actions, GitLab CI, or locally. Needs only
 # qemu-img, curl, sha256sum.

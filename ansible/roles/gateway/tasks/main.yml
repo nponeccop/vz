@@ -80,7 +80,8 @@
     state: started
     enabled: true
 
-# --- HTTPS reverse proxy: future work (see README "Layer 0"). The gateway is the
+# --- HTTPS reverse proxy: future work (see README "A whole fleet on one box").
+# The gateway is the
 # only box with a public IP, so the fleet's public ingress will terminate here.
 # Left as a documented placeholder so this role stays the single source of truth
 # for the gateway when it lands.

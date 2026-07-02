@@ -2,8 +2,8 @@ name: golden-image
 
 # Build the Rocky GenericCloud -> streamOptimized VMDK golden image and publish it as a
 # release asset. Release assets allow up to 2 GB on free public repos, which sidesteps
-# the tighter Actions artifact-storage quota (spike item (a), see
-# platform/ovh-esxi/README.md "Layer 0"). Public-repo Actions minutes are unmetered.
+# the tighter Actions artifact-storage quota (see
+# platform/ovh-esxi/README.md "Genesis"). Public-repo Actions minutes are unmetered.
 #
 # This workflow + platform/golden-image/ are self-contained on purpose: they are meant to
 # move to a dedicated image-only repo once the pipeline is proven.
