@@ -1,7 +1,7 @@
 ---
 # Make the lab's NAT/DHCP gateway — the always-on box that gives the ESXi Internal
 # vSwitch its way out. Run once against the gateway VM created by
-# `make-rocky-vm.sh -g <name>` (which gives it static both-NIC networking from the
+# `seed.yml -e vm_role=gateway` (which gives it static both-NIC networking from the
 # seed). Connects as root (the handoff contract guarantees root + key).
 #
 #   ansible-playbook -i '<gateway-public-ip>,' gateway.yaml

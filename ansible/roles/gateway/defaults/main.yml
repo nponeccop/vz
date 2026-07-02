@@ -2,8 +2,8 @@
 # gateway role — turn a Rocky node into the lab's NAT/DHCP gateway for the ESXi
 # Internal vSwitch. See platform/ovh-esxi/README.md "A whole fleet on one box".
 #
-# Division of labour: the cloud-init seed (make-rocky-vm.sh -g) establishes static
-# addressing on BOTH NICs at first boot — it must, because the gateway IS the DHCP
+# Division of labour: the cloud-init seed (seed.yml -e vm_role=gateway) establishes
+# static addressing on BOTH NICs at first boot — it must, because the gateway IS the DHCP
 # server and cannot lease its own address. This role layers the *gateway function*
 # on top of that connectivity: IPv4 forwarding, NAT masquerade, and internal DHCP.
 #
@@ -15,7 +15,7 @@ gateway_int_if: int
 # The /24 prefix for the isolated Internal segment — the single knob for the subnet.
 # Change it (here, via group_vars, or `-e gateway_int_net=10.20.30`) if 10.10.10.x
 # collides with another org network; everything below derives from it. Keep this in
-# sync with INT_NET in platform/ovh-esxi/config.env (the seed's static addressing).
+# sync with int_net in platform/ovh-esxi/config.yml (the seed's static addressing).
 gateway_int_net: "10.10.10"
 
 # Internal DHCP pool handed to the workers. Mirrors the old setup-master-dhcp.sh:

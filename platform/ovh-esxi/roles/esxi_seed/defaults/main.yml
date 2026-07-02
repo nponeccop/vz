@@ -1,5 +1,5 @@
 ---
-# esxi_seed defaults — the config surface that replaces config.env. Override the
+# esxi_seed defaults — the seeder's config surface. Override the
 # site-specific values in platform/ovh-esxi/config.yml (gitignored; copy from
 # config.example.yml). Per-VM params (vm_name, vm_role, vm_boot, state) are passed
 # as -e extra-vars.
