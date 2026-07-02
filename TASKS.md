@@ -269,7 +269,7 @@ bootstrap-only.
       on it so far, but newer collections may eventually want 2.15+. Revisit
       (pip/EPEL ansible-core) if a collection bumps its floor.
 - [ ] **Automate genesis + retire Alpine** (the ESXi bootstrap redesign — see
-      `platform/ovh-esxi/README.md` "Layer 0"). Today the `qcow2 → VMDK` converter and
+      `platform/ovh-esxi/README.md`). Today the `qcow2 → VMDK` converter and
       the NAT/DHCP gateway both run on a hand-installed Alpine "master", and the exact
       converter invocation was done once and forgotten. Replace with:
   - [~] **Spike (ESXi 8.0.3 probed 2026-06-30 — gates the whole thing):**
@@ -329,7 +329,7 @@ bootstrap-only.
         `ssh-add -L` into `/root/.ssh/authorized_keys` — `ssh-copy-id`/agent-forwarding
         proved fragile through the ESXi web console. VMX gotchas: `guestOS=other-64` (ESXi
         rejects `alpinelinux-64`) and an explicit `pciSlotNumber`/`pciBridge` block (or
-        pvscsi fails: "No PCIe slot for SCSI0"). See README "Bootstrapping from zero".
+        pvscsi fails: "No PCIe slot for SCSI0"). See README "Genesis".
   - [ ] Two generators kept: **Rocky 9** golden image = the official vz bootstrap; a
         **Rocky 10** generator allowed for other ESXi projects.
   - [ ] **Retest the whole genesis on a secondary clean ESXi host** (ISO-boot bootstrap →

@@ -12,7 +12,7 @@
 # Gateway mode (-g) builds the one special seed: the always-on NAT/DHCP box. It IS
 # the DHCP server, so it cannot lease its own address — it gets STATIC networking
 # on both NICs, with the public NIC pinned to the OVH virtual MAC. It must boot
-# before any worker. See README "Layer 0".
+# before any worker. See README "A whole fleet on one box".
 #
 # No-boot mode (-n) builds + registers the VM but leaves it powered off. This is
 # the genesis IP-handoff: the disposable Alpine bootstrap host (holding the failover
