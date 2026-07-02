@@ -4,17 +4,10 @@ ebin/
 *.swp
 bootstrap/bootstrap.retry
 bootstrap/ssh.pub
-vzmaster/images/
-vzmaster/*.retry
-vzmaster/tmp-*.json
 oci_bundles/*/rootfs/
 
 # local site config for platform/ovh-esxi
 platform/ovh-esxi/config.env
-
-# vzmaster inventory (lab state)
-vzmaster/hosts
-vzmaster/tmp-*.json
 
 # local test bundle (contains a binary rootfs)
 oci_bundles/vztest/

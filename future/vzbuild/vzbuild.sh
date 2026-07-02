@@ -20,7 +20,7 @@ function cmd_update
 		return
 	fi
 	echo $image
-	mv $image ../../vzmaster/images
+	mv $image ../../vzbuild/images
 }	
 
 set -e -o pipefail
