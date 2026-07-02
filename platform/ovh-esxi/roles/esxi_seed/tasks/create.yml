@@ -147,11 +147,16 @@
       Built + registered {{ vm_name }} as vmid {{ vmid }} (NOT powered on).
       Free the failover IP, then power on with:
       ssh {{ esxi_ssh_target }} vim-cmd vmsvc/power.on {{ vmid }}
-  when: not vm_boot
+  when: not (vm_boot | bool)
 
+# vm_boot arrives as the STRING "false" via -e vm_boot=false, and a non-empty
+# string is truthy — so `not vm_boot` would be False and we'd wrongly power on.
+# `| bool` maps "false"/"no"/0 to False. Critical: at genesis the gateway shares
+# the failover MAC with the still-running bootstrap VM, so an unwanted power-on
+# is a MAC collision that knocks both off the network.
 - name: stop here when not booting
   ansible.builtin.meta: end_host
-  when: not vm_boot
+  when: not (vm_boot | bool)
 
 - name: power on
   ansible.builtin.raw: "vim-cmd vmsvc/power.on {{ vmid }}"
