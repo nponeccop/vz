@@ -1,7 +1,9 @@
 # vz v3 — Specification
 
 v3 is the Podman-based line. The chroot/`runch`/`forever.sh` bring-up work is
-archived on the **`v2` branch**; `master` is v3 from here on.
+archived on the **`v2` branch**; `master` is v3 from here on. This document is
+the *design* — what vz is and why it is shaped this way. Implementation status
+and remaining work live in [`TASKS.md`](TASKS.md).
 
 The bet of v3: stop reinventing the node runtime. `podman kube play` already
 runs a pod from a Kubernetes-subset YAML, and systemd (via Quadlet) already
@@ -18,12 +20,12 @@ These are not negotiable; every decision below preserves them.
   listening agent. There is no vz daemon on a node to attack.
 - **Damage localization.** A node knows nothing about other nodes. There is no
   shared registry and no cluster membership. Desired state lives **only** on the
-  master. Compromising one node leaks nothing about the fleet.
+  control host. Compromising one node leaks nothing about the fleet.
 - **WAN-first.** Everything assumes high-latency, lossy links. No consensus, no
   pull-from-registry. Images are *pushed*, minified, and layered so an update
   ships only what changed.
 
-## Two layers
+## Layers
 
 | Layer | Concern | Owner |
 |---|---|---|
@@ -33,27 +35,23 @@ These are not negotiable; every decision below preserves them.
 | **Fleet** | **`vz apply`: push images + manifests over WAN** | **vz** |
 | **Fleet** | **`vz ps` / `vz diff`: actual vs desired** | **vz** |
 
+Node and Build are supporting layers vz mostly consumes; the Fleet layer is the
+product.
+
 ## Desired state lives in git
 
-A git repo on the master is the single source of truth. Its history *is* the
-deploy runbook: the answer to "why is this here / what did I change 6 months
+A git repo on the control host is the single source of truth. Its history *is*
+the deploy runbook: the answer to "why is this here / what did I change 6 months
 ago" is `git log`. This serves the real use case — infrequent changes by an
 operator who needs to *recall*, not a 24/7 reconciler.
 
-Proposed layout:
-
-```
-fleet/
-  recipe.sh            # one build recipe that produces every fleet image
-  nodes/
-    node-a.yaml        # k8s-subset pod manifest for node-a
-    node-b.yaml
-```
-
-A manifest references images by tag (`image: localhost/dns-resolver:v3`); the
-recipe says how those tags are built. Reading one node file plus the recipe
-tells future-you both *what runs* and *how to change it* — closing the loop
-that goes dark during deploys today.
+The layout is a **groups** model: `groups.yaml` maps named host groups to pod
+manifests under `pods/`, and one `recipe.sh` builds every image. See
+[`fleet.example/`](fleet.example/) for the canonical working example. A manifest
+references images by tag (`image: localhost/dns-resolver:v3`); the recipe says
+how those tags are built. Reading one pod manifest plus the recipe tells
+future-you both *what runs* and *how to change it* — closing the loop that goes
+dark during deploys today.
 
 ## Kubernetes YAML — a real, validated subset
 
@@ -70,7 +68,7 @@ like k8s but silently no-ops 95% of PodSpec. So:
   opens each declared port in the node's firewall (firewalld). With `hostNetwork`
   the container port is the host port, so the manifest is the single source of
   truth for what is reachable — no manual `firewall-cmd`. (Additive today; it
-  does not yet close ports removed from the manifest — see TASKS.)
+  does not yet close ports removed from the manifest — see [`TASKS.md`](TASKS.md).)
 
 ## Image distribution — push, not pull
 
@@ -84,7 +82,7 @@ that (`imagePullPolicy: Never`) and pre-seed each node's local
    rootless `buildah from scratch` + copy). This is new work: v2's bare `tar.xz`
    rootfs is not an OCI image and `kube play` cannot consume it.
 3. Push the image to each target node with **`podman image scp`**.
-4. `podman kube play node-x.yaml` on the node.
+4. `podman kube play <pod>.yaml` on the node.
 
 ### Transport: `podman image scp` (whole image, no registry)
 
@@ -96,11 +94,12 @@ plane exactly (SSH is the only channel).
 **Rejected alternatives, with the evidence:**
 
 - *rsync of an OCI-layout directory* (hoping content-addressed blobs dedup for
-  free): tested on bs-test and **refuted twice** — a one-file app edit re-shipped
-  ~960KB of a 968KB image, compressed *and* uncompressed. OCI layer tar digests
-  are not reproducible across builds (re-tarring varies mtimes/ordering), so the
-  base layer looks new to rsync every deploy. Content-addressing only helps if
-  the addresses are stable; skopeo-to-directory does not make them stable.
+  free): tested on a lab node and **refuted twice** — a one-file app edit
+  re-shipped ~960KB of a 968KB image, compressed *and* uncompressed. OCI layer
+  tar digests are not reproducible across builds (re-tarring varies
+  mtimes/ordering), so the base layer looks new to rsync every deploy.
+  Content-addressing only helps if the addresses are stable; skopeo-to-directory
+  does not make them stable.
 - *Ephemeral SSH-tunnelled registry* (the only thing that reliably ships just
   the changed layer, via registry HEAD-skip): real delta, but reintroduces a
   registry process. Deferred — not worth the complexity at our deploy cadence.
@@ -124,21 +123,13 @@ deploy frequency ever make the WAN cost bite, revisit the ephemeral registry.
   surface** — the thing that tells you a node rebooted and came back empty, or
   that a deploy half-applied.
 
-## Reboot survival (implemented)
+## Reboot survival
 
 `vz apply` installs the manifest as a rootless Quadlet `.kube` unit in
 `~/.config/containers/systemd/<pod>.kube` (beside `<pod>.yaml`); the systemd
 generator turns it into `<pod>.service`, and with linger enabled the user
-manager starts it on boot. Verified on bs-test: after a real reboot the pod
-came back on its own and `vz diff` reported converged with no apply.
-
-## Build order (by value, not by fun)
-
-1. ✅ Desired-state in git: layout, fleet `recipe.sh`, manifest schema + validator.
-2. ✅ `vzbuild`: OCI-wrap (+ optional 2-layer base/app).
-3. ✅ `vz apply`: `podman image scp` push + Quadlet install.
-4. ✅ `vz ps` + `vz diff`.
-5. ✅ Quadlet boot units (folded into `vz apply`).
+manager starts it on boot. The pod comes back on its own after a reboot, with no
+apply, and `vz diff` reports converged.
 
 ## What v2 retires
 
@@ -157,24 +148,21 @@ came back on its own and `vz diff` reported converged with no apply.
 
 ## Node platform
 
-Nodes are **Rocky Linux 9 only** in v3. Everything the node needs is *available*
-from stock appstream (verified on Rocky 9.8: `podman` 5.8 — which bundles
-Quadlet at `/usr/libexec/podman/quadlet` plus the systemd generator —
-`skopeo` 1.22, `buildah` 1.43, cgroups v2), with no third-party repos. None of
-it is installed by default; bootstrap installs it and enables rootless
-persistence:
+Nodes are **Rocky Linux 9 only** in v3. Everything the node needs is available
+from stock appstream (`podman` — which bundles Quadlet at
+`/usr/libexec/podman/quadlet` plus the systemd generator — `skopeo`, `buildah`,
+cgroups v2), with no third-party repos. None of it is installed by default;
+bootstrap installs it and enables rootless persistence:
 
 - `dnf install podman skopeo buildah`
 - `loginctl enable-linger <user>` — **required**: rootless pods are owned by the
   deploy user's systemd manager. Without linger, closing the `vz apply` SSH
   session tears the pod down (observed: SIGKILL / exit 137). Linger keeps the
   user manager alive past logout and is also what lets the Quadlet boot units
-  (step 5) start the pod on reboot.
+  start the pod on reboot.
 
-**Where `vz apply` runs.** It needs the images in a local rootless `podman`
-store, so it runs on a build/control host with `podman`/`buildah`. Today that is
-the Alpine master (podman 5.8 with the `vfs` storage driver — the VM kernel has
-no `/dev/fuse`/overlay, and `vfs` needs neither). The master remains close to
-distribution-agnostic, but the long-term direction is **Rocky-only** (Alpine was
-only ever the small-ISO ESXi bootstrap host); on Rocky the build host uses
-overlay and none of the vfs/subuid/XDG workarounds are needed.
+**Where `vz apply` runs.** It needs the pod's images in a local rootless
+`podman` store, so it runs on a **control host** with `podman`/`buildah` — not on
+the operator's laptop. The current control-host setup and the ongoing
+Alpine→Rocky migration are tracked in [`TASKS.md`](TASKS.md) and
+[`platform/ovh-esxi/`](platform/ovh-esxi/).
