@@ -341,7 +341,7 @@ orders. Not yet a flag.
 Copy `config.env.example` → `config.env` (gitignored — never commit site
 values). Keys: `ESXI`, `DATASTORE`, `PORTGROUP`, `BASE_VMDK`, `MEM`, `CPUS`,
 `DISK` (grow root disk; empty = golden size); gateway adds `PUB_PORTGROUP`,
-`OVH_MAC`, `PUB_ADDR`, `PUB_PREFIX`, `PUB_GW`, `PUB_DNS`, `INT_NET`.
+`OVH_MAC`, `PUB_ADDR`, `PUB_PREFIX`, `PUB_GW`, `PUB_DNS`, `INT_NET`, `INT_MAC`.
 
 ### The OVH CLI (ordering, IPs, reverse DNS)
 

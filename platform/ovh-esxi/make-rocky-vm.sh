@@ -1,7 +1,7 @@
 #!/bin/sh
 # make-rocky-vm.sh — create (or destroy) a Rocky 9 VM on ESXi that satisfies the
 # vz handoff contract: clean Rocky, root reachable over SSH with the deploy key,
-# networking via the lab's DHCP (master = NAT/DHCP gateway on the Internal vSwitch).
+# networking via the lab's DHCP (served by the gateway on the Internal vSwitch).
 #
 # Usage:
 #   make-rocky-vm.sh NAME            create worker VM NAME (DHCP), print its IP
@@ -23,8 +23,8 @@
 # Configuration: ./config.env (gitignored) overrides the defaults below.
 # See config.env.example. Key vars: ESXI, DATASTORE, PORTGROUP, BASE_VMDK, MEM,
 # CPUS, DISK (grow root disk; empty = golden image size). Gateway adds:
-# PUB_PORTGROUP, OVH_MAC, PUB_ADDR, PUB_PREFIX, PUB_GW, PUB_DNS, INT_ADDR,
-# INT_CIDR, INT_MAC.
+# PUB_PORTGROUP, OVH_MAC, PUB_ADDR, PUB_PREFIX, PUB_GW, PUB_DNS, INT_NET (the
+# subnet knob; INT_ADDR/INT_CIDR derive from it), INT_MAC.
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
