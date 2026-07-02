@@ -102,9 +102,10 @@ Notably:
 ## Node platform
 
 Nodes are **Rocky Linux 9 only** in v3. Everything needed comes from stock
-appstream (`podman`, `skopeo`, `buildah`, cgroups v2) with no third-party repos;
-`bootstrap` installs it and enables rootless persistence. `vz apply` runs on a
-control host with a local rootless Podman store.
+appstream (`podman`, `skopeo`, cgroups v2) with no third-party repos;
+`bootstrap` installs it and enables rootless persistence. `buildah` is a
+build-time tool and lives on the control host (above), not the node. `vz apply`
+runs on a control host with a local rootless Podman store.
 
 ## More
 

@@ -67,9 +67,9 @@ product.
 Ansible is the universal executor. `vz apply` is a thin wrapper that validates
 the fleet, generates an Ansible inventory, and runs a playbook against a role —
 SSH is the only control channel, and Ansible is the executor across *all* of the
-operator's projects. `vztool` keeps only the two jobs Ansible can't do: the
+operator's projects. `vztool` keeps only the jobs Ansible can't do: the
 **validator** (loud rejection of unsupported k8s fields) and the diagnostic
-**`vz diff`**. The bootstrap and deploy Ansible trees are unified under
+**`vz ps`/`vz diff`**. The bootstrap and deploy Ansible trees are unified under
 `ansible/` (one `ansible.cfg`, one `roles/`, one `ssh.pub`).
 
 The same validated manifest runs on two backends:

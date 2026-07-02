@@ -14,6 +14,10 @@ aren't re-learned.
       (Likely keep — the typed diff is the product, not Ansible's job.)
 - [ ] Bring vz verbs/manifest "as close to `kubectl` as feasible" so k8s features
       can be added compatibly.
+- [ ] `vz apply` drives only the podman/prod backend (`deploy.yaml` → `podman-pod`);
+      the dev/k3s executor (`deploy-k3s.yaml` → `k3s-pod`) exists but is run directly
+      via `ansible-playbook` for now. Add a backend selector (`--target podman|k3s`)
+      if `vz apply` should reach both, per SPEC "Executors — one manifest, two backends".
 
 ### Build & minify (the k8s build Job)
 
