@@ -22,14 +22,21 @@ Not reboot-survival, not a running pod — a successful push.
 ## Bootstrapping from zero (the operator's path)
 
 **What you need on your own machine:** a web browser, an SSH client, and one SSH
-keypair. That is *it* — **no Ansible, no local ESXi/OVH tooling, no build toolchain.**
-Everything heavy (Ansible, the golden-image pipeline, the fleet control loop) runs *on
-the gateway* once it exists; your workstation only ever opens a browser and an SSH
-session. The barrier to entry is deliberately "can you SSH and click a web UI".
+keypair. That is *it* — **no Ansible, no local ESXi/OVH tooling, no build toolchain,
+and no pre-existing Linux box.** Everything heavy (Ansible, the golden-image pipeline,
+the fleet control loop) runs on hosts you create along the way; your workstation only
+ever opens a browser and an SSH session. The barrier to entry is deliberately "can you
+SSH and click a web UI".
 
-The flow is four moves: **make a key → order + install ESXi (browser) → paste a genesis
-snippet into ESXi's SSH → SSH into the gateway, which becomes the control host for
-everything else.**
+**The one subtlety earlier drafts got wrong:** the toolchain that stamps VMs
+(`make-rocky-vm.sh` → `xorrisofs`) needs a Linux host, and on a fresh box *there isn't
+one yet*. We don't assume one — we boot a throwaway **Alpine live VM straight from its
+ISO** (no installer, no seed) as the first Linux machine. It borrows the gateway's
+failover IP just long enough to build the real (Rocky) gateway, then is destroyed.
+
+The flow: **make a key → order + install ESXi (browser) → paste a genesis snippet into
+ESXi's SSH (fetch images + boot the first Linux host) → paste your key into its console
+→ let that host build the gateway → the gateway becomes the control host.**
 
 ### 1. Generate a deploy key (workstation, once)
 
@@ -51,55 +58,154 @@ agent / YubiKey (see the sleeping-plane model below). Put the public key at
   `ovhcloud` CLI can manage these but not order them; ordering is a manager/cart action.
   Virtual-MAC creation is `POST /dedicated/server/{sn}/virtualMac` if you prefer the API.)*
 
-### 3. Genesis: SSH to ESXi and paste some commands
+### 3. Genesis, part A — paste into ESXi's SSH
 
-SSH to the ESXi host as `root` and paste the genesis snippet. It (a) creates an isolated
-`Internal` vSwitch/portgroup for the workers, (b) fetches the pinned golden VMDK from the
-GitHub release and verifies it by sha256, (c) imports it to a read-only base disk:
+SSH to the ESXi host as `root`. ESXi's own BusyBox **`wget --no-check-certificate`**
+fetches over HTTPS fine (it has no CA store, so verification is off and integrity comes
+from the pinned **sha256**) — **no Python, no pre-staged files.** This snippet (a) makes
+the isolated `Internal` vSwitch, (b) fetches the golden VMDK + the Alpine ISO, (c) imports
+the golden VMDK to a base disk, (d) creates and boots an Alpine live VM on the failover
+IP's virtual MAC:
 
 ```sh
+DS=/vmfs/volumes/<datastore>
+OVH_MAC=<OVH-virtual-MAC>            # from step 2
+ALPINE_VERSION=3.21.0
+
 # (a) isolated internal network (no uplink) — the workers' segment
 esxcli network vswitch standard add -v vSwitch1
 esxcli network vswitch standard portgroup add -p Internal -v vSwitch1
 
-# (b) fetch the golden VMDK. ESXi has no CA store and its BusyBox wget segfaults on TLS,
-#     so fetch with python3 (verify OFF) and trust the pinned sha256 instead.
-cd /vmfs/volumes/<datastore>/images
-python3 - <<'PY'
-import ssl, urllib.request, hashlib
-url  = "<release-asset-url>/Rocky-9-GenericCloud-<ver>.x86_64.vmdk"
-want = "<pinned-sha256>"
-ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
-data = urllib.request.urlopen(url, context=ctx, timeout=180).read()
-got = hashlib.sha256(data).hexdigest()
-assert got == want, f"sha256 mismatch: {got} != {want}"
-open("golden.vmdk", "wb").write(data); print("verified", got)
-PY
+# (b) fetch golden VMDK + Alpine ISO (native wget; verify off + pinned sha256)
+mkdir -p $DS/images $DS/iso
+wget --no-check-certificate -O $DS/images/golden.vmdk "<release-asset-url>/Rocky-9-...-x86_64.vmdk"
+echo "<pinned-sha256>  $DS/images/golden.vmdk" | sha256sum -c -
+wget --no-check-certificate -O $DS/iso/alpine-$ALPINE_VERSION.iso \
+  "https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION%.*}/releases/x86_64/alpine-virt-$ALPINE_VERSION-x86_64.iso"
 
-# (c) import to a thin base disk (cloned per VM thereafter)
-vmkfstools -i golden.vmdk -d thin Rocky-9-base.vmdk
+# (c) import golden to a thin base disk (cloned per VM thereafter)
+vmkfstools -i $DS/images/golden.vmdk -d thin $DS/images/Rocky-9-base.vmdk
+
+# (d) create + boot the Alpine bootstrap host on the failover IP's virtual MAC.
+#     guestOS MUST be "other-64" (ESXi rejects "alpinelinux-64"); the pciSlotNumber /
+#     pciBridge block is required or pvscsi can't get a PCI slot ("No PCIe slot for SCSI0").
+mkdir -p $DS/alpine-genesis
+vmkfstools -c 8G -d thin $DS/alpine-genesis/alpine-genesis.vmdk
+cat > $DS/alpine-genesis/alpine-genesis.vmx <<EOF
+.encoding = "UTF-8"
+config.version = "8"
+virtualHW.version = "21"
+displayName = "alpine-genesis"
+guestOS = "other-64"
+firmware = "efi"
+numvcpus = "2"
+memSize = "2048"
+vmci0.present = "TRUE"
+scsi0.present = "TRUE"
+scsi0.virtualDev = "pvscsi"
+scsi0.pciSlotNumber = "160"
+scsi0:0.present = "TRUE"
+scsi0:0.fileName = "alpine-genesis.vmdk"
+scsi0:0.deviceType = "scsi-hardDisk"
+sata0.present = "TRUE"
+sata0.pciSlotNumber = "32"
+sata0:0.present = "TRUE"
+sata0:0.fileName = "$DS/iso/alpine-$ALPINE_VERSION.iso"
+sata0:0.deviceType = "cdrom-image"
+sata0:0.startConnected = "TRUE"
+ethernet0.present = "TRUE"
+ethernet0.virtualDev = "vmxnet3"
+ethernet0.pciSlotNumber = "192"
+ethernet0.networkName = "VM Network"
+ethernet0.addressType = "static"
+ethernet0.address = "$OVH_MAC"
+ethernet0.checkMACAddress = "FALSE"
+ethernet0.startConnected = "TRUE"
+svga.present = "TRUE"
+svga.autodetect = "TRUE"
+hpet0.present = "TRUE"
+pciBridge0.present = "TRUE"
+pciBridge0.pciSlotNumber = "17"
+pciBridge4.present = "TRUE"
+pciBridge4.virtualDev = "pcieRootPort"
+pciBridge4.functions = "8"
+pciBridge4.pciSlotNumber = "21"
+pciBridge5.present = "TRUE"
+pciBridge5.virtualDev = "pcieRootPort"
+pciBridge5.functions = "8"
+pciBridge5.pciSlotNumber = "22"
+pciBridge6.present = "TRUE"
+pciBridge6.virtualDev = "pcieRootPort"
+pciBridge6.functions = "8"
+pciBridge6.pciSlotNumber = "23"
+pciBridge7.present = "TRUE"
+pciBridge7.virtualDev = "pcieRootPort"
+pciBridge7.functions = "8"
+pciBridge7.pciSlotNumber = "24"
+EOF
+vim-cmd vmsvc/power.on "$(vim-cmd solo/registervm $DS/alpine-genesis/alpine-genesis.vmx)"
 ```
 
-Then stamp the **gateway** — the single VM with a *static* seed (your key + the failover
-IP and its virtual MAC on the public portgroup, and a static internal `10.10.10.1`):
+### 4. Genesis, part B — bring the bootstrap host online (browser: ESXi web console)
+
+Open the `alpine-genesis` VM console and log in as `root` (empty password). The failover
+IP is a `/32` whose gateway is off-subnet, so the default route must be **on-link**. Then
+install your key and start sshd — you're already root, so no extra user is needed:
 
 ```sh
-make-rocky-vm.sh -g gateway    # ext = failover IP + virtual MAC (/32, on-link), int = 10.10.10.1
+# --- network: failover /32 with on-link gateway ---
+ip addr add <failover-IP>/32 dev eth0
+ip link set eth0 up
+ip route add <gw> dev eth0            # <gw> = the .254 of the server's main /24
+ip route add default via <gw>
+echo nameserver 8.8.8.8 > /etc/resolv.conf
+ping -c2 1.1.1.1                       # verify uplink
+
+# --- your key + sshd ---
+apk add openssh
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+cat > /root/.ssh/authorized_keys      # paste the line(s) from `ssh-add -L`, then Ctrl-D
+chmod 600 /root/.ssh/authorized_keys
+rc-update add sshd && service sshd start
 ```
 
-`make-rocky-vm.sh` is a portable POSIX shell script that talks to ESXi *over SSH* (it does
-not run on ESXi); it needs only `ssh`, `scp`, and `xorrisofs` to build the tiny cloud-init
-seed. Its inputs (datastore, portgroups, failover IP, virtual MAC, internal subnet) come
-from `config.env` — copy `config.env.example` and fill the `PUB_*` / `OVH_MAC` values from
-step 2.
+The console is miserable for *typing* a 400-char key but fine for a single **paste**: run
+`ssh-add -L` on your workstation (or `ssh-add -L > keys`), copy the output, and paste it
+into the `cat >` above. That's the only manual transfer in the whole bootstrap. (The
+slicker `ssh-copy-id`/agent-forwarding tricks proved fragile through the web console — a
+plain paste of `ssh-add -L` is what actually works.)
 
-### 4. The gateway becomes the control host
+### 5. The bootstrap host builds the gateway, then hands off the IP
 
-SSH to `root@<failover-IP>` — a clean Rocky with your key (the handoff contract). From
+SSH to `root@<failover-IP>` — the first Linux machine, born from an ISO with no prior
+Linux box. Install the small toolchain and build the Rocky gateway from the golden image.
+Because the gateway reuses the *same* failover IP/MAC, build it **without booting** (`-n`),
+then free the IP and power the gateway on:
+
+```sh
+apk add git openssh xorriso bash
+git clone <repo> vz && cd vz/platform/ovh-esxi
+cp config.env.example config.env && vi config.env   # ESXI, DATASTORE, PUB_*/OVH_MAC, subnet
+gwid=$(./make-rocky-vm.sh -n -g gateway)             # build + register the gateway, powered off
+```
+
+Now hand the IP over **from your workstation** (not from the bootstrap host — destroying
+the VM you're logged into would kill the command mid-run):
+
+```sh
+ssh root@<esxi> "\
+  a=\$(vim-cmd vmsvc/getallvms | awk '\$2==\"alpine-genesis\"{print \$1}'); \
+  vim-cmd vmsvc/power.off \$a; vim-cmd vmsvc/unregister \$a; \
+  rm -rf /vmfs/volumes/<datastore>/alpine-genesis; \
+  vim-cmd vmsvc/power.on <gwid>"          # <gwid> printed above
+```
+
+The Rocky gateway boots onto the failover IP with your key (the handoff contract). From
 here **the gateway is the control host**; you install Ansible *there*, never on your
-laptop, and it drives the rest of the fleet:
+laptop:
 
 ```sh
+ssh root@<failover-IP>
 dnf -y install git ansible-core
 git clone <repo> vz && cd vz/ansible
 ansible-playbook -i '<failover-IP>,' gateway.yaml   # NAT + DHCP for the Internal segment
@@ -118,7 +224,7 @@ Tooling that stands up the lab and provisions Rocky VMs on OVH/ESXi.
 
 | File | What it does | Runs on |
 |------|--------------|---------|
-| `make-rocky-vm.sh` | Create/destroy a Rocky VM over SSH-to-ESXi; `-g` = the static-network gateway | anywhere that can SSH to ESXi |
+| `make-rocky-vm.sh` | Create/destroy a Rocky VM over SSH-to-ESXi; `-g` = the static-network gateway, `-n` = build+register but don't boot (genesis IP-handoff) | any Linux that can SSH to ESXi — at genesis, the Alpine bootstrap host |
 | `config.env.example` | Site config template — copy to `config.env` (gitignored) | — |
 | `fix-ssh-agent.sh` | Re-point the shell at the rotated forwarded agent socket | control host |
 | `../golden-image/build-golden-vmdk.sh` + `.github/workflows/golden-image.yml` | CI: build + publish the golden VMDK (Job A) | GitHub Actions |
@@ -181,20 +287,26 @@ argument for automating it.
 - **Job B (gateway) becomes a clone of the golden image.** Once ESXi can obtain the
   golden VMDK, the gateway is just an early clone, configured by an ansible **`gateway`
   role** (NAT + `dnsmasq` DHCP + the future HTTPS reverse proxy) that replaces the
-  `setup-master-{sudo,nat,dhcp}.sh` shell scripts. No installer ISO is ever booted again.
+  `setup-master-{sudo,nat,dhcp}.sh` shell scripts. **Nothing is ever *installed* from an
+  ISO** — the only ISO booted anywhere is the Alpine *live* image that provides the
+  disposable bootstrap host (it installs nothing and is thrown away).
 
-- **Alpine is retired from infrastructure.** Its only advantage was a tiny install ISO;
-  the golden-clone genesis boots *no* installer ISO at all, so that advantage evaporates.
-  Alpine survives only as a hand diagnostic image — one OS (Rocky / RHEL-stable) for all
-  lab infrastructure.
+- **Alpine is retired from *standing* infrastructure — but returns in one transient
+  role.** No Rocky node ever runs Alpine, and no Alpine box stays up. But the genesis
+  needs a *first Linux machine* to run `make-rocky-vm.sh` (which needs `xorrisofs`), and a
+  fresh ESXi box has none — so genesis boots a throwaway **Alpine live VM straight from
+  its ISO** (no installer, no seed) as that first host. It borrows the failover IP, builds
+  the Rocky gateway (`make-rocky-vm.sh -n -g`), and is destroyed to free the IP. One OS
+  (Rocky / RHEL-stable) for everything that *stays running*; Alpine is bootstrap-only.
 
-**Getting the artifact onto ESXi (spiked ✅ — fetch works via Python).** Confirmed on
-ESXi 8.0.3: the box fetches HTTPS fine, but only via `/bin/python3` (3.11) — **BusyBox
-`wget` segfaults on TLS** (rc=139) and there is **no CA trust store** (`ca-certificates`
-absent), so the fetch runs with cert verification *off* and integrity comes from the
-pinned **sha256**, exactly as the provenance design intended. The `httpClient` firewall
-ruleset is already enabled; the datastore had 1.7 T free. SCP / datastore-GUI upload
-remains the fallback if a box's outbound path is closed.
+**Getting the artifact onto ESXi (spiked ✅ — native `wget`).** Confirmed on ESXi 8.0.3
+(BusyBox v1.29.3): **`wget --no-check-certificate` fetches HTTPS cleanly** — a 63 MB ISO
+and the golden VMDK both pulled at exit 0. This *supersedes* the earlier "BusyBox wget
+segfaults on TLS → use Python" finding, which was stale; **no Python is needed.** ESXi has
+**no CA trust store** (`ca-certificates` absent), so verification is off and integrity
+comes from the pinned **sha256**, exactly as the provenance design intended. The
+`httpClient` firewall ruleset is already enabled; the datastore had 1.7 T free. SCP /
+datastore-GUI upload remains the fallback if a box's outbound path is closed.
 
 **The gateway is the one special seed.** Every worker keeps the proven key-only + DHCP
 seed. The gateway cannot get an address from a DHCP server that is *itself*, so it needs a
@@ -218,9 +330,11 @@ ESXi" chicken-and-egg. Cheap, and it removes the "we never checked the ISO" habi
    `vmkfstools -i … -d thin` (*Clone: 100% → VMFS thin*, valid descriptor + geometry).
    Datastore 1.7 T free. Upload gotcha: ESXi needs **`scp -O`** (legacy protocol) — plain
    `scp` (OpenSSH 9 SFTP default) returns "Connection closed".
-3. ✅ **confirmed** — `/bin/python3` fetched a file from GitHub over HTTPS; `httpClient`
-   firewall already open. Caveats baked into the design: **wget segfaults on TLS**
-   (python only), **no CA store** (verify off + pinned sha256).
+3. ✅ **confirmed (updated 2026-07-02)** — ESXi's BusyBox `wget --no-check-certificate`
+   fetched 63 MB from an HTTPS mirror at exit 0; `httpClient` firewall already open. This
+   *supersedes* the earlier python-only finding — BusyBox wget does **not** segfault on
+   this box (v1.29.3), so **no Python path is needed**. **No CA store** → verify off +
+   pinned sha256.
 4. ✅ **validated on real hardware (2026-07-02)** — `make-rocky-vm.sh -g gateway` booted a
    golden clone with the failover IP + its virtual MAC on `ext` and `10.10.10.1` on `int`;
    the ansible **`gateway`** role brought up NAT + DHCP (`changed=0` on re-run — idempotent),
@@ -239,8 +353,8 @@ Alpine `setup-master-{nat,dhcp}.sh`. firewalld is retired on the gateway only (i
 fight nftables for the ruleset); workers keep it.
 
 **End-to-end proven with the real artifact (2026-06-30):** CI build → 597 MB release
-asset → ESXi `/bin/python3` fetch (verify off) → **sha256 MATCH** → `vmkfstools -i … -d
-thin` → valid 10 G VMFS disk. The pipeline lives at `platform/golden-image/` +
+asset → ESXi fetch (verify off; now via native `wget --no-check-certificate`) → **sha256
+MATCH** → `vmkfstools -i … -d thin` → valid 10 G VMFS disk. The pipeline lives at `platform/golden-image/` +
 `.github/workflows/golden-image.yml` (self-contained, for extraction to an image-only
 repo).
 

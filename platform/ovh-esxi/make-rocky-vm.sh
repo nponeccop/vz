@@ -6,12 +6,19 @@
 # Usage:
 #   make-rocky-vm.sh NAME            create worker VM NAME (DHCP), print its IP
 #   make-rocky-vm.sh -g NAME         create the gateway VM NAME (static both NICs)
+#   make-rocky-vm.sh -n -g NAME      build + register but DON'T power on (print vmid)
 #   make-rocky-vm.sh -d NAME         destroy VM NAME (power off, unregister, delete)
 #
 # Gateway mode (-g) builds the one special seed: the always-on NAT/DHCP box. It IS
 # the DHCP server, so it cannot lease its own address — it gets STATIC networking
 # on both NICs, with the public NIC pinned to the OVH virtual MAC. It must boot
 # before any worker. See README "Layer 0".
+#
+# No-boot mode (-n) builds + registers the VM but leaves it powered off. This is
+# the genesis IP-handoff: the disposable Alpine bootstrap host (holding the failover
+# IP) builds the gateway with `-n -g`, is then destroyed to free the IP, and only
+# then is the gateway powered on (it reuses that same failover IP/virtual MAC — only
+# one VM may hold it at a time). Power on later with: vim-cmd vmsvc/power.on <vmid>.
 #
 # Configuration: ./config.env (gitignored) overrides the defaults below.
 # See config.env.example. Key vars: ESXI, DATASTORE, PORTGROUP, BASE_VMDK, MEM,
@@ -180,7 +187,9 @@ EOF
 
   xorrisofs -quiet -output "$d/seed.iso" -volid CIDATA -joliet -rock \
     "$d/meta-data" "$d/user-data" ${ncfg:+"$ncfg"}
-  scp -q "$d/seed.iso" "$ESXI:$DATASTORE/images/$NAME-seed.iso"
+  # -O: legacy SCP protocol. OpenSSH 9 defaults to SFTP, which ESXi's shell rejects
+  # ("Connection closed") — so force the old protocol or the upload fails on a fresh host.
+  scp -O -q "$d/seed.iso" "$ESXI:$DATASTORE/images/$NAME-seed.iso"
 }
 
 write_vmx() {
@@ -291,10 +300,21 @@ create_vm() {
   log "writing VMX"
   write_vmx "$NAME"
 
-  log "registering + powering on"
+  log "registering"
   vmid=$(esxi "vim-cmd solo/registervm $DATASTORE/$NAME/$NAME.vmx")
-  esxi "vim-cmd vmsvc/power.on $vmid" >/dev/null
   log "vmid=$vmid"
+
+  # No-boot: leave it registered but powered off (the genesis IP-handoff — see header).
+  # The caller frees the failover IP (destroys the bootstrap host), then powers this on.
+  if [ "$NOBOOT" -eq 1 ]; then
+    log "built + registered $NAME, NOT powered on (--no-boot)"
+    log "free the failover IP, then: ssh $ESXI vim-cmd vmsvc/power.on $vmid"
+    echo "$vmid"            # <- machine-readable result on stdout
+    return 0
+  fi
+
+  log "powering on"
+  esxi "vim-cmd vmsvc/power.on $vmid" >/dev/null
 
   # The gateway has a known static public IP (it serves DHCP, so it has no lease
   # to wait for). Workers get a generated MAC that ESXi writes into the VMX once
@@ -346,11 +366,13 @@ create_vm() {
 
 # ---------------------------------------------------------------- main
 DESTROY=0
+NOBOOT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -d|--destroy) DESTROY=1; shift ;;
     -g|--gateway) GATEWAY=1; shift ;;
-    -h|--help) echo "usage: $0 [-d] [-g] NAME" >&2; exit 1 ;;
+    -n|--no-boot) NOBOOT=1; shift ;;
+    -h|--help) echo "usage: $0 [-d] [-g] [-n] NAME" >&2; exit 1 ;;
     --) shift; break ;;
     -*) die "unknown option: $1" ;;
     *) break ;;

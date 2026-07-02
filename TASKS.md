@@ -248,8 +248,12 @@ config is **baked into the image**, so no secrets machinery is needed to ship it
 
 The decision: the build host becomes the **full control host** (ansible + git
 desired-state + node/vztool + podman/buildah store + k3s). `vz apply` runs from it.
-Alpine stays for now as the NAT/DHCP gateway and where the agent runs — but the genesis
-redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
+Alpine currently hosts the agent (and, until the 2026-07-02 gateway validation, NAT/DHCP).
+The genesis redesign below (CI golden image + Rocky `gateway` clone) retires Alpine from
+*standing* infra — but it returns in one **transient** role: the ISO-booted **bootstrap
+host** that provides the first Linux machine at genesis (see README "Bootstrapping from
+zero"). One OS (Rocky/RHEL-stable) for everything that stays running; Alpine is
+bootstrap-only.
 
 - [x] `buildhost` VM created on ESXi (Rocky 9.8, 4GB/2cpu, 40G via `DISK=`),
       bootstrapped (`ok=10 changed=5`), k3s installed (node Ready, v1.36.2+k3s1).
@@ -275,17 +279,19 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
         (b) ✅ **confirmed** — a `qemu-img` streamOptimized VMDK imported via
         `vmkfstools -i … -d thin` (Clone 100% → VMFS thin); datastore 1.7 T free. Upload
         needs **`scp -O`** (legacy protocol; plain scp = "Connection closed").
-        (c) ✅ **TLS-fetch confirmed** via `/bin/python3` (3.11) — but **BusyBox `wget`
-        segfaults on TLS** (so python, not wget) and **no CA store** (fetch with verify
-        off + pinned **sha256** for integrity); `httpClient` firewall already enabled.
+        (c) ✅ **TLS-fetch confirmed — updated 2026-07-02**: ESXi's BusyBox
+        `wget --no-check-certificate` fetches HTTPS cleanly (63 MB ISO, exit 0), so **no
+        Python is needed** — the earlier "BusyBox wget segfaults on TLS → use python"
+        finding was stale (BusyBox v1.29.3). **No CA store** → verify off + pinned
+        **sha256** for integrity; `httpClient` firewall already enabled.
         (d) ✅ **validated on real HW 2026-07-02** — `make-rocky-vm.sh -g gateway` (static
         both-NIC seed + two-NIC VMX, OVH virtual MAC pinned) + ansible `gateway` role
         (idempotent); the Rocky gateway replaced the Alpine master live and a worker
         regained internet. OVH gotchas: /32 needs `on-link` + `to: 0.0.0.0/0` (not
         `default`); public NIC needs `checkMACAddress=FALSE`.
-        **End-to-end proven 2026-06-30**: CI build → 597 MB release asset → ESXi python3
-        fetch → sha256 MATCH → `vmkfstools -i` → valid 10 G VMFS disk. (a)+(b)+(c) closed
-        with the real artifact; (d) implemented, only a real gateway boot remains.
+        **End-to-end proven 2026-06-30**: CI build → 597 MB release asset → ESXi `wget`
+        fetch (verify off) → sha256 MATCH → `vmkfstools -i` → valid 10 G VMFS disk.
+        (a)+(b)+(c)+(d) all closed on real hardware.
   - [~] **CI golden-image pipeline** (`platform/golden-image/build-golden-vmdk.sh` +
         `.github/workflows/golden-image.yml`): `qcow2 → streamOptimized VMDK`, published as
         a GitHub **release asset** (≤2 GB, dodges the artifact-storage quota) with a
@@ -309,10 +315,26 @@ redesign below (CI golden image + Rocky `gateway` clone) is slated to retire it.
         its known static IP (no DHCP-lease wait). Boots before workers. OVH side (buy IP /
         virtual MAC / reverse DNS) stays the accepted out-of-band step. `setup-master-*.sh`
         retire once a real gateway boot validates the role.
+  - [x] **First Linux host from an ISO — genesis chicken-and-egg fixed (2026-07-02).**
+        `make-rocky-vm.sh` needs a Linux host with `xorrisofs`, and a fresh ESXi box has
+        none — earlier drafts silently assumed one. Genesis now boots a throwaway **Alpine
+        live VM straight from its ISO** (fetched by native ESXi `wget`, hand-written VMX,
+        no installer/no seed) as that first host. Proven on real HW: ISO fetched, VM
+        booted to a live root shell (kernel `6.12.1-3-virt`, vmxnet3 on the OVH virtual
+        MAC), reachable on the failover IP. New tooling to support the IP-handoff:
+        **`make-rocky-vm.sh -n`** (build + register the gateway but don't power on) so the
+        bootstrap host can create the gateway, be destroyed to free the failover IP, then
+        the gateway boots onto it; plus **`scp -O`** so the seed upload works from a fresh
+        OpenSSH-9 Alpine (SFTP-default) host. Key transfer is a single console **paste** of
+        `ssh-add -L` into `/root/.ssh/authorized_keys` — `ssh-copy-id`/agent-forwarding
+        proved fragile through the ESXi web console. VMX gotchas: `guestOS=other-64` (ESXi
+        rejects `alpinelinux-64`) and an explicit `pciSlotNumber`/`pciBridge` block (or
+        pvscsi fails: "No PCIe slot for SCSI0"). See README "Bootstrapping from zero".
   - [ ] Two generators kept: **Rocky 9** golden image = the official vz bootstrap; a
         **Rocky 10** generator allowed for other ESXi projects.
-  - [ ] **Retest the ESXi bootstrap on a secondary clean ESXi host**, then decommission
-        Alpine from infra (keep it only as a diagnostic image).
+  - [ ] **Retest the whole genesis on a secondary clean ESXi host** (ISO-boot bootstrap →
+        `-n -g` gateway → handoff), then decommission Alpine from *standing* infra (it
+        remains the transient ISO bootstrap host + a diagnostic image).
 
 ## Smaller follow-ups / known limitations
 
