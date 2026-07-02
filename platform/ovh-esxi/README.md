@@ -274,6 +274,13 @@ install -d -m 700 /root/.ssh
 cat /home/foo/keys >> /root/.ssh/authorized_keys
 chmod 600 /root/.ssh/authorized_keys
 install -m 644 /home/foo/keys /root/deploy.pub   # survives `deluser foo`; the seeder's ssh.pub
+# tooling for the seeder while we're already root on the console: git + xorriso
+# (build the seed ISO), ansible-core, iproute2 (Ansible network facts on Alpine).
+# A bare Alpine live boot has no usable apk repos, and xorriso + ansible-core
+# live in community — so wire up main+community first, then install.
+setup-apkrepos -c -1        # main + community, fastest mirror, non-interactive
+apk update
+apk add git xorriso ansible-core iproute2
 echo "OK — re-login as root@<failover-IP> with agent forwarding"
 EOF
 ```

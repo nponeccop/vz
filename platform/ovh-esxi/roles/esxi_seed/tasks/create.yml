@@ -9,6 +9,13 @@
     quiet: true
   when: vm_role == 'gateway'
 
+# user@host for scp/ssh that RUN from the Alpine box (delegate_to: localhost) but
+# CONNECT to ESXi. Pulled from hostvars[inventory_hostname] because a delegated
+# task's own ansible_host/ansible_user resolve to the delegate (localhost), not ESXi.
+- name: resolve the ESXi ssh target for delegated copies
+  ansible.builtin.set_fact:
+    esxi_ssh_target: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}@{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
+
 - name: load the deploy public key
   ansible.builtin.set_fact:
     deploy_key: "{{ lookup('file', ssh_pub) }}"
@@ -81,6 +88,10 @@
   changed_when: true
   delegate_to: localhost
 
+- name: ensure the datastore images dir exists
+  ansible.builtin.raw: "mkdir -p {{ datastore }}/images"
+  changed_when: false
+
 # -O forces the legacy SCP protocol: ESXi's shell rejects OpenSSH 9's SFTP default.
 - name: copy the seed ISO to ESXi (local scp -O)
   ansible.builtin.command:
@@ -89,7 +100,7 @@
       - -O
       - -q
       - "{{ seed_work }}/{{ vm_name }}/seed.iso"
-      - "{{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }}:{{ datastore }}/images/{{ vm_name }}-seed.iso"
+      - "{{ esxi_ssh_target }}:{{ datastore }}/images/{{ vm_name }}-seed.iso"
   changed_when: true
   delegate_to: localhost
 
@@ -117,7 +128,7 @@
       - -O
       - -q
       - "{{ seed_work }}/{{ vm_name }}/{{ vm_name }}.vmx"
-      - "{{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }}:{{ datastore }}/{{ vm_name }}/{{ vm_name }}.vmx"
+      - "{{ esxi_ssh_target }}:{{ datastore }}/{{ vm_name }}/{{ vm_name }}.vmx"
   changed_when: true
   delegate_to: localhost
 
@@ -135,7 +146,7 @@
     msg: >-
       Built + registered {{ vm_name }} as vmid {{ vmid }} (NOT powered on).
       Free the failover IP, then power on with:
-      ssh {{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }} vim-cmd vmsvc/power.on {{ vmid }}
+      ssh {{ esxi_ssh_target }} vim-cmd vmsvc/power.on {{ vmid }}
   when: not vm_boot
 
 - name: stop here when not booting
