@@ -4,15 +4,11 @@ ebin/
 *.swp
 bootstrap/bootstrap.retry
 bootstrap/ssh.pub
-oci_bundles/*/rootfs/
 
 # local site config for platform/ovh-esxi
 platform/ovh-esxi/config.env
 platform/ovh-esxi/config.yml
 platform/ovh-esxi/inventory.ini
-
-# local test bundle (contains a binary rootfs)
-oci_bundles/vztest/
 
 # vzbuild strace parser deps/cache
 future/vzbuild/strace/node_modules/
@@ -29,4 +25,3 @@ future/vzbuild/*.trace
 future/vzbuild/*.parsed
 future/vzbuild/*.spec
 future/vzbuild/strace.log
-oci_bundles/myapp/
