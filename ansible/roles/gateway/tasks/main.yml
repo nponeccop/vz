@@ -2,10 +2,15 @@
 # gateway — NAT + internal DHCP for the ESXi Internal vSwitch. The RHEL-native
 # replacement for setup-master-{nat,dhcp}.sh (which were Alpine apk/rc-update).
 # Idempotent; reports real changed/ok. Connects as root (handoff contract).
+#
+# Firewall: firewalld (the RHEL default), so the gateway uses the SAME firewall as
+# the workers instead of special-casing this box with raw nftables. firewalld owns
+# the ruleset; we drive it with the ansible.posix.firewalld module (see
+# ansible/requirements.yml) plus firewall-cmd for the one thing the module can't do
+# (policy objects).
 
-# The kernel half of routing. Written as a drop-in with ansible.builtin so the
-# role needs no external collection (ansible-core on the gateway ships none, and
-# it's one setting) — copy is idempotent, the handler applies it live on change.
+# The kernel half of routing. Written as a drop-in with ansible.builtin so this one
+# setting needs no module — copy is idempotent, the handler applies it live on change.
 - name: IPv4 forwarding (persistent)
   ansible.builtin.copy:
     dest: /etc/sysctl.d/00-vz-gateway.conf
@@ -13,52 +18,95 @@
     mode: "0644"
   notify: apply sysctl
 
-- name: gateway packages — nftables for NAT, dnsmasq for DHCP
+- name: gateway packages — firewalld for NAT, dnsmasq for DHCP
   ansible.builtin.dnf:
     name:
-      - nftables
+      - firewalld
       - dnsmasq
     state: present
 
-# firewalld and nftables.service both program nftables; running both fights over
-# the ruleset. The gateway is infrastructure (not a workload node, so it has no
-# podman-pod firewalld ports to manage), so it owns nft directly and firewalld is
-# retired here. Workers keep firewalld — this is scoped to the gateway role only.
-- name: retire firewalld on the gateway (nftables.service owns the ruleset)
+- name: firewalld enabled + running
   ansible.builtin.systemd_service:
     name: firewalld
-    state: stopped
-    enabled: false
-    masked: true
-  failed_when: false
-
-- name: directory for the gateway nft ruleset
-  ansible.builtin.file:
-    path: /etc/nftables
-    state: directory
-    mode: "0755"
-
-- name: NAT + forward ruleset (validated before install)
-  ansible.builtin.template:
-    src: nftables-gateway.nft.j2
-    dest: /etc/nftables/vz-gateway.nft
-    mode: "0600"
-    validate: nft -c -f %s
-  notify: reload nftables
-
-- name: nftables loads the vz-gateway ruleset on boot
-  ansible.builtin.lineinfile:
-    path: /etc/sysconfig/nftables.conf
-    line: include "/etc/nftables/vz-gateway.nft"
-    create: true
-    mode: "0600"
-  notify: reload nftables
-
-- name: nftables.service enabled + running
-  ansible.builtin.systemd_service:
-    name: nftables
     state: started
     enabled: true
+
+# Zone the two NICs: the public uplink is "external" (where masquerade/SNAT happens),
+# the Internal vSwitch side is "internal". Interface names are the seed's stable
+# set-name values, so this is independent of PCI enumeration.
+#
+# The NICs are NetworkManager-managed, so the zone MUST be set on the NM connection,
+# not just via firewalld: firewalld's own interface binding is silently reverted to
+# the default (public) zone on every `firewall-cmd --reload` and on reboot, because
+# NM reasserts the interface's zone from its connection profile. Setting connection.zone
+# makes NM the authoritative source, so the binding survives both. `device reapply`
+# pushes the zone live without downing the link (safe even on our SSH uplink, ext).
+- name: firewalld zone bound to each NIC via NetworkManager (survives reload + reboot)
+  ansible.builtin.shell:
+    cmd: |
+      set -eu
+      con=$(nmcli -g GENERAL.CONNECTION device show "{{ item.dev }}")
+      [ -n "$con" ] || { echo "no NM connection for {{ item.dev }}" >&2; exit 1; }
+      if [ "$(nmcli -g connection.zone connection show "$con")" != "{{ item.zone }}" ]; then
+        nmcli connection modify "$con" connection.zone "{{ item.zone }}"
+        nmcli device reapply "{{ item.dev }}"
+        echo CHANGED
+      fi
+  loop:
+    - { dev: "{{ gateway_ext_if }}", zone: external }
+    - { dev: "{{ gateway_int_if }}", zone: internal }
+  register: nm_zone
+  changed_when: "'CHANGED' in nm_zone.stdout"
+
+- name: masquerade (SNAT) outbound on the external zone
+  ansible.posix.firewalld:
+    zone: external
+    masquerade: true
+    state: enabled
+    permanent: true
+    immediate: true
+
+- name: open internal DHCP so workers can reach dnsmasq (udp/67)
+  ansible.posix.firewalld:
+    zone: internal
+    service: dhcp
+    state: enabled
+    permanent: true
+    immediate: true
+
+# RHEL 9 firewalld filters forwarded traffic and does NOT forward between zones by
+# default — internal -> external needs an explicit policy. The firewalld module has
+# no policy-object support, so drive firewall-cmd directly (the return path is covered
+# by firewalld's global established/related accept, so a one-way policy is enough).
+- name: list existing firewalld policies
+  ansible.builtin.command: firewall-cmd --permanent --get-policies
+  register: fw_policies
+  changed_when: false
+
+- name: create the internal -> external forwarding policy
+  ansible.builtin.command: firewall-cmd --permanent --new-policy int-to-ext
+  when: "'int-to-ext' not in fw_policies.stdout.split()"
+  notify: reload firewalld
+
+# firewall-cmd rejects --add-ingress-zone and --add-egress-zone in one call
+# (mutually exclusive args), so each is its own invocation.
+- name: int -> ext policy — ingress zone internal
+  ansible.builtin.command: firewall-cmd --permanent --policy int-to-ext --add-ingress-zone internal
+  register: fw_ingress
+  changed_when: "'ALREADY_ENABLED' not in fw_ingress.stderr"
+  notify: reload firewalld
+
+- name: int -> ext policy — egress zone external
+  ansible.builtin.command: firewall-cmd --permanent --policy int-to-ext --add-egress-zone external
+  register: fw_egress
+  changed_when: "'ALREADY_ENABLED' not in fw_egress.stderr"
+  notify: reload firewalld
+
+- name: int -> ext policy — target ACCEPT
+  ansible.builtin.command: firewall-cmd --permanent --policy int-to-ext --set-target ACCEPT
+  changed_when: false   # set-target is idempotent and reports no change signal;
+                        # the create/ingress/egress steps drive the reload on first run
+  notify: reload firewalld
 
 - name: dnsmasq reads /etc/dnsmasq.d
   ansible.builtin.lineinfile:
@@ -76,11 +124,33 @@
     mode: "0644"
   notify: restart dnsmasq
 
+# dnsmasq's packaged unit only orders After=network.target — that means "the network
+# stack is up", NOT "interfaces are configured". With interface=int + bind-interfaces
+# it then dies at boot with "unknown interface int" because int has no address yet.
+# Order it after network-online.target so NetworkManager-wait-online has brought int
+# up (with its 10.x.x.1 address) first.
+- name: drop-in dir for the dnsmasq unit override
+  ansible.builtin.file:
+    path: /etc/systemd/system/dnsmasq.service.d
+    state: directory
+    mode: "0755"
+
+- name: dnsmasq waits for the network to be online (int must be up first)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/dnsmasq.service.d/wait-online.conf
+    content: |
+      [Unit]
+      After=network-online.target
+      Wants=network-online.target
+    mode: "0644"
+  notify: restart dnsmasq
+
 - name: dnsmasq enabled + running
   ansible.builtin.systemd_service:
     name: dnsmasq
     state: started
     enabled: true
+    daemon_reload: true
 
 # --- HTTPS reverse proxy: future work (see README "A whole fleet on one box").
 # The gateway is the

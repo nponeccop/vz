@@ -1,0 +1,11 @@
+---
+# Ansible collection dependencies. Install on the control host before running the
+# playbooks:
+#
+#   ansible-galaxy collection install -r ansible/requirements.yml
+#
+# ansible.posix provides the firewalld module the gateway role uses to program NAT
+# (masquerade + inter-zone forwarding) and to open the internal DHCP port — the
+# RHEL-native firewall, so the gateway matches the workers instead of special-casing.
+collections:
+  - name: ansible.posix

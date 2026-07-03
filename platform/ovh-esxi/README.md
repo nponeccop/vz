@@ -409,8 +409,11 @@ The gateway is stamped by the seeder's gateway mode + configured by the ansible
   virtual MAC on `ext` (`checkMACAddress = "FALSE"` so ESXi accepts the non-VMware
   OUI). It boots before any worker.
 - **`ansible/gateway.yaml`** (role `ansible/roles/gateway`) — IPv4 forwarding +
-  **nftables** NAT masquerade + **dnsmasq** internal DHCP. firewalld is retired
-  on the gateway only (it would fight nftables); workers keep it.
+  **firewalld** NAT (external-zone masquerade + an internal→external forwarding
+  policy) + **dnsmasq** internal DHCP. firewalld is the RHEL default, so the
+  gateway uses the same firewall as the workers. Needs the `ansible.posix`
+  collection on the control host: `ansible-galaxy collection install -r
+  ansible/requirements.yml`.
 
 **Scale-out / production alternative (direction, not yet built):** give each
 worker its **own** failover IP + virtual MAC and drop the gateway entirely — the

@@ -3,10 +3,9 @@
   ansible.builtin.command: sysctl --system
   changed_when: false
 
-- name: reload nftables
-  ansible.builtin.systemd_service:
-    name: nftables
-    state: reloaded
+- name: reload firewalld
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: false
 
 - name: restart dnsmasq
   ansible.builtin.systemd_service:
