@@ -13,7 +13,7 @@ vz has exactly two kinds of host. Everything below sets up one of each.
 | Role | What it is | What runs on it |
 |---|---|---|
 | **Control host** | the operator's trust root: desired state, image builds, the dev cluster, and the deploy identity | git repo (the fleet), rootless `podman` + `buildah`, `vztool`, a local **k3s** (dev target), the hardware-key SSH identity |
-| **Worker** | a "sleeping plane" node that only runs pods | `init` + `sshd` + `systemd` + `podman`/`skopeo`; **no vz daemon** |
+| **Worker** | a "sleeping plane" node that only runs pods | `init` + `sshd` + `systemd` + `podman`; **no vz daemon** |
 
 > **Decision — the control host is the Admin's own Rocky Linux 9 workstation/VM,
 > kept mostly offline / NAT-isolated.** It is the registry-and-etcd equivalent:
@@ -43,14 +43,14 @@ vz has exactly two kinds of host. Everything below sets up one of each.
 A Rocky 9 workstation or VM you control. Two playbooks make it vz-ready:
 
 ```sh
-# (a) make THIS host a vz node: deploy user + podman/skopeo + rootless linger
+# (a) make THIS host a vz node: deploy user + podman + rootless linger
 ansible-playbook -i '<control-host>,' ansible/bootstrap.yaml
 
 # (b) add build + control tooling on top of (a)
 ./platform/ovh-esxi/buildhost.sh <control-host> <you>
 ```
 
-Step (b) installs `buildah`/`git`/`jq`/`rsync`, Node 24 (for `vztool`), the
+Step (b) installs `buildah`/`skopeo`/`git`/`jq`/`rsync`, Node 24 (for `vztool`), the
 `containers.podman` / `ansible.posix` / `kubernetes.core` collections, a
 single-node **k3s** dev cluster (`--disable=traefik`), `~/.kube/config` pointed at
 it, and a clone of this repo at `~/vz` with `vztool`'s npm deps.
@@ -123,7 +123,7 @@ systemd (via Quadlet) supervises the pod. Add workers when you want this backend
    key works. One turnkey way (a whole fleet behind one public IP) is the
    OVH/ESXi single-box platform — see §4.
 
-2. **Bootstrap each node** (deploy user + `podman`/`skopeo` + linger):
+2. **Bootstrap each node** (deploy user + `podman` + linger):
 
    ```sh
    ansible-playbook -i '<node>,' ansible/bootstrap.yaml

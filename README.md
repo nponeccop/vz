@@ -72,7 +72,7 @@ those tags are built. Reading one pod file plus the recipe tells future-you both
 *what runs* and *how to change it*.
 
 The lifecycle is three steps — **bootstrap** a bare Rocky 9 node (`ansible/`
-makes it `vz apply`-ready: deploy user, `podman`/`skopeo`, rootless linger),
+makes it `vz apply`-ready: deploy user, `podman`, rootless linger),
 **build** images on the control host (rootless Podman + buildah), and **apply**
 the fleet with `vz` (in [`vztool/`](vztool/)). `vz apply` is a thin wrapper: it
 validates the fleet, generates an Ansible inventory, and runs the `podman-pod`
@@ -102,9 +102,9 @@ Notably:
 ## Node platform
 
 Nodes are **Rocky Linux 9 only** in v3. Everything needed comes from stock
-appstream (`podman`, `skopeo`, cgroups v2) with no third-party repos;
-`bootstrap` installs it and enables rootless persistence. `buildah` is a
-build-time tool and lives on the control host (above), not the node. `vz apply`
+appstream (`podman`, cgroups v2) with no third-party repos;
+`bootstrap` installs it and enables rootless persistence. `buildah` and `skopeo`
+are build-time tools and live on the control host (above), not the node. `vz apply`
 runs on a control host with a local rootless Podman store.
 
 ## More

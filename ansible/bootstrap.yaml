@@ -1,7 +1,7 @@
 ---
 # Make a fresh Rocky 9 node vz-apply-ready (v3):
 #   - a deploy user (named after the operator) with passwordless sudo + the key
-#   - the container runtime: podman + skopeo (stock appstream, no third-party repos)
+#   - the container runtime: podman (stock appstream, no third-party repos)
 #   - linger, so rootless pods survive logout AND come back on reboot
 # Connects as root (the handoff contract guarantees root + key). Idempotent.
 - hosts: all
@@ -24,11 +24,13 @@
         name: python3-libselinux
         state: present
 
-    - name: container runtime — the node runs and loads images with these
+    - name: container runtime — the node runs and loads images with podman
+      # podman only: `podman image scp` (save|ssh|load) and `podman kube play`
+      # need nothing else. skopeo is a build-time tool on the control host
+      # (see platform/ovh-esxi/buildhost.yaml), never on a worker.
       ansible.builtin.dnf:
         name:
           - podman
-          - skopeo
         state: present
 
     - name: create the deploy user in the wheel group

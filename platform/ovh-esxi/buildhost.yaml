@@ -1,7 +1,7 @@
 ---
 # Provision a Rocky 9 build/control host — the host that runs vz (build + apply)
 # and a local k3s dev cluster (the dev half of the two-target model). Run AFTER
-# ansible/bootstrap.yaml (which gives the deploy user + podman/skopeo + linger):
+# ansible/bootstrap.yaml (which gives the deploy user + podman + linger):
 #
 #   ./buildhost.sh <ip> [user]
 #
@@ -23,6 +23,7 @@
       ansible.builtin.dnf:
         name:
           - buildah          # oci.sh image builds
+          - skopeo           # oci.sh: skopeo copy containers-storage <-> oci-archive
           - git              # the desired-state repo
           - jq               # build/runtime helpers
           - tar
