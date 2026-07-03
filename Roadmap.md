@@ -24,6 +24,26 @@ overflow or a vulnerable TLS stack in etcd, a centralized logging server,
 monitoring/management agents on each node. vz nodes run only `sshd` and
 `systemd`; there is no management daemon to attack.
 
+## Kubernetes-friendly cluster
+
+Kubernetes is the de-facto standard of private clouds, and fighting the standard
+is a losing battle. vz aims to stay as close to Kubernetes' **file and
+command-line syntax** as possible — pod manifests are a real, validated `podman
+kube play` subset, not a look-alike schema — while implementing an *alternative
+security model* underneath. The operator keeps k8s muscle memory and portable
+manifests; vz swaps the exposed control plane (etcd, API server, node agents) for
+the sleeping-plane, push-over-SSH model above. Familiar surface, different guts.
+
+This rides tooling that Red Hat / IBM build and actively promote, so it stays
+maintained without vz owning the node runtime:
+
+- **Podman** — `podman kube play` + Quadlet own the node: run a pod from k8s YAML
+  and let systemd supervise it across reboots, with no daemon to attack.
+- **Ansible** — a glorified SSH executor that brings infrastructure-as-code
+  management (idempotent, declarative, auditable) while retaining the **SSH-only
+  attack surface**. No new listening service, no agent — the control channel is
+  the one that was already there.
+
 ## Libertarian cluster
 
 A cluster resistant to shutdown by governments. Imagine a white-hat mirror set
