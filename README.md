@@ -44,7 +44,7 @@ and drift detection.
 
 These carry over from the Roadmap and every part of v3 preserves them:
 
-- **Sleeping plane / no management daemon.** Nodes run only `init`, `sshd`, and
+- **Sleeping plane / no management daemon.** Nodes run only `sshd` and
   `systemd`. `podman kube play` is a one-shot command invoked over SSH, not a
   listening agent. There is no vz daemon on a node to attack.
 - **Damage localization.** A node knows nothing about other nodes. No shared

@@ -21,7 +21,7 @@ compromised node leaks nothing about the rest of the fleet.
 Minimize the attack surface. Every cluster manager on the market exposes a
 central manager — and often a node-side agent — to the attacker: a buffer
 overflow or a vulnerable TLS stack in etcd, a centralized logging server,
-monitoring/management agents on each node. vz nodes run only `init`, `sshd`, and
+monitoring/management agents on each node. vz nodes run only `sshd` and
 `systemd`; there is no management daemon to attack.
 
 ## Libertarian cluster

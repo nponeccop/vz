@@ -14,7 +14,7 @@ vz has exactly two kinds of host. Everything below sets up one of each.
 | Role | What it is | What runs on it |
 |---|---|---|
 | **Control host** | the operator's trust root: desired state, image builds, the dev cluster, and the deploy identity | git repo (the fleet), rootless `podman` + `buildah`, `vztool`, a local **k3s** (dev target), the hardware-key SSH identity |
-| **Worker** | a "sleeping plane" node that only runs pods | `init` + `sshd` + `systemd` + `podman`; **no vz daemon** |
+| **Worker** | a "sleeping plane" node that only runs pods | `sshd` + `systemd` + `podman`; **no vz daemon** |
 
 > **Why these two roles** — the control host as the operator's own offline
 > workstation (the entire environment until you add workers), Rocky 9 only, one

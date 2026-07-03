@@ -15,7 +15,7 @@ desired state, WAN image push, and a fleet-wide view of drift.
 
 These are not negotiable; every decision below preserves them.
 
-- **Sleeping plane / no management daemon.** Nodes run only `init`, `sshd`, and
+- **Sleeping plane / no management daemon.** Nodes run only `sshd` and
   `systemd`. `podman kube play` is a one-shot command invoked over SSH, not a
   listening agent. There is no vz daemon on a node to attack.
 - **Damage localization.** A node knows nothing about other nodes. There is no
