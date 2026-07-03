@@ -36,6 +36,16 @@ is the fleet SSH key — a fleet-wide root-SSH compromise compromises the fleet
 regardless, so that is the boundary worth hardening. This already beats a
 standard exposed-etcd setup.
 
+In the **simplest case the control host is the operator's own Rocky Linux 9
+workstation or VM** — and it is the *entire* environment: it holds the
+desired-state repo, builds images, and runs the dev cluster (k3s) locally, with
+no workers and no gateway. Workers (the prod backend) are added only when needed;
+until then there is nothing to attack but the offline workstation itself. The
+deploy identity is handled key-half-only: nodes are seeded with the *public* half
+of the fleet key (`ansible/ssh.pub`), while the private half never lands on a
+node or on the control host's disk and is forwarded through the agent only for
+the length of a deploy.
+
 - **Registries are build-time only.** A registry is admissible **on the control
   host** (it never faces the fleet), so native k8s build flows that assume a
   registry are fine at build time. The *runtime* plane stays registry-less:

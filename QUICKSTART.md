@@ -3,8 +3,9 @@
 Instruction-first companion to the design docs. **What** vz is and **why** it is
 shaped this way live in [`README.md`](README.md) and [`SPEC-v3.md`](SPEC-v3.md);
 remaining work in [`TASKS.md`](TASKS.md). This file is the ordered **how** — from a
-bare machine to a running pod — with the decision behind each step pinned inline
-so the instructions don't drift from the design.
+bare machine to a running pod. The *decisions* behind each step live in
+[`SPEC-v3.md`](SPEC-v3.md); this file links to the relevant section rather than
+restating them.
 
 ## The two roles
 
@@ -15,26 +16,12 @@ vz has exactly two kinds of host. Everything below sets up one of each.
 | **Control host** | the operator's trust root: desired state, image builds, the dev cluster, and the deploy identity | git repo (the fleet), rootless `podman` + `buildah`, `vztool`, a local **k3s** (dev target), the hardware-key SSH identity |
 | **Worker** | a "sleeping plane" node that only runs pods | `init` + `sshd` + `systemd` + `podman`; **no vz daemon** |
 
-> **Decision — the control host is the Admin's own Rocky Linux 9 workstation/VM,
-> kept mostly offline / NAT-isolated.** It is the registry-and-etcd equivalent:
-> desired state *and* images live only here. Keeping it off the network except
-> during operator-initiated deploys shrinks the attack surface to the one secret
-> that actually matters — the fleet SSH key. In the **simplest case this single
-> offline host is the entire environment**: it builds images and runs the dev
-> cluster locally, with *no workers and no gateway at all* (§2). You add workers
-> only when you want the prod backend (§3). Rationale: SPEC-v3 "Trust model".
-
-> **Decision — Rocky Linux 9 only, both roles.** Everything comes from stock
-> appstream; no third-party repos land on a worker. (SPEC-v3 "Node platform".)
-
-> **Decision — one manifest, two backends.** The same validated Pod manifest
-> deploys to **dev** (k3s, on the control host itself) and **prod** (`podman` +
-> systemd on workers, over SSH — no cluster plane to attack). Start with dev only.
-> (SPEC-v3 "Executors — one manifest, two backends".)
-
-> **Decision — Ansible is the only executor; SSH is the only channel.** Nothing
-> listens on a worker; `podman kube play` is a one-shot command invoked over SSH,
-> not an agent. (SPEC-v3 invariants.)
+> **Why these two roles** — the control host as the operator's own offline
+> workstation (the entire environment until you add workers), Rocky 9 only, one
+> manifest / two backends (dev k3s vs. prod podman-over-SSH), and Ansible-over-SSH
+> as the only control channel — is argued in [`SPEC-v3.md`](SPEC-v3.md): "Trust
+> model", "Node platform", "Executors — one manifest, two backends", and the
+> Invariants.
 
 ---
 
@@ -55,11 +42,9 @@ Step (b) installs `buildah`/`skopeo`/`git`/`jq`/`rsync`, Node 24 (for `vztool`),
 single-node **k3s** dev cluster (`--disable=traefik`), `~/.kube/config` pointed at
 it, and a clone of this repo at `~/vz` with `vztool`'s npm deps.
 
-> **Deploy identity.** The SSH key that reaches root on every node is the fleet's
-> ultimate secret. Keep it behind a **hardware key** (smart card / FIDO) with
-> human-in-the-loop confirmation, forwarded through your agent only for the length
-> of a deploy. Nodes are seeded with its *public* half (`ansible/ssh.pub`); the
-> private half never touches a node or the control host's disk.
+> **Deploy identity.** Keep the fleet SSH key behind a hardware key (smart card /
+> FIDO), agent-forwarded only for the length of a deploy; nodes get only its
+> *public* half (`ansible/ssh.pub`). Why: [`SPEC-v3.md`](SPEC-v3.md) "Trust model".
 
 ---
 
@@ -79,11 +64,10 @@ cp -r fleet.example ~/fleet && cd ~/fleet && git init && git add -A && git commi
 Layout and the "why two files" split (workload vs. placement):
 [`fleet.example/README.md`](fleet.example/README.md).
 
-> **Decision — a real, strictly-validated k8s subset.** vz reuses the
-> `podman kube play` subset and **loudly rejects** any field it does not honor —
-> never a silent no-op. `imagePullPolicy: Never` is mandatory (vz uses what was
-> pushed, never pulls) and `image:` must be `localhost/...` (there is no runtime
-> registry). (SPEC-v3 "Kubernetes YAML".)
+> The manifest is a strictly-validated `podman kube play` subset —
+> `imagePullPolicy: Never` and `localhost/...` images are mandatory. What's
+> honored and why: [`SPEC-v3.md`](SPEC-v3.md) "Kubernetes YAML — a real, validated
+> subset".
 
 ---
 
@@ -141,18 +125,12 @@ systemd (via Quadlet) supervises the pod. Add workers when you want this backend
    node ~/vz/vztool/src/diff.ts    groups.yaml     # desired (git) minus actual
    ```
 
-> **Decision — push, not pull; whole image over SSH.** `vz apply` uses
-> `podman image scp` (a `podman save | ssh | podman load`); no registry faces the
-> fleet. (SPEC-v3 "Image distribution".)
-
-> **Decision — reboot survival via Quadlet + linger.** The manifest is installed
-> as a rootless Quadlet `.kube` unit, so the pod restarts on boot with no re-apply.
-> `loginctl enable-linger` (done by bootstrap) is **required** — without it,
-> closing the deploy SSH session SIGKILLs the pod. (SPEC-v3 "Reboot survival".)
-
-> **`vz diff` is the product surface.** It tells you a node rebooted and came back
-> empty, or that a deploy half-applied — the thing that goes dark during a deploy
-> today.
+> `vz apply` ships whole images with `podman image scp` (save|ssh|load) — no
+> registry faces the fleet — and installs the manifest as a rootless **Quadlet**
+> unit; `loginctl enable-linger` (done by bootstrap) keeps the pod alive past your
+> SSH session and restarts it on reboot. `vz diff` then shows a node that rebooted
+> empty or a half-applied deploy. Why: [`SPEC-v3.md`](SPEC-v3.md) "Image
+> distribution", "Reboot survival", and "Commands".
 
 ---
 
