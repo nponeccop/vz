@@ -24,6 +24,12 @@ overflow or a vulnerable TLS stack in etcd, a centralized logging server,
 monitoring/management agents on each node. vz nodes run only `sshd` and
 `systemd`; there is no management daemon to attack.
 
+vz does its management through **Ansible**, which is a glorified SSH executor: it
+brings infrastructure-as-code management (idempotent, declarative, auditable)
+while remaining **agentless**. There is no new listening service and no node-side
+agent — the control channel is the SSH that was already there, so IaC management
+costs *zero* extra attack surface.
+
 ## Kubernetes-friendly cluster
 
 Kubernetes is the de-facto standard of private clouds, and fighting the standard
@@ -35,14 +41,10 @@ manifests; vz swaps the exposed control plane (etcd, API server, node agents) fo
 the sleeping-plane, push-over-SSH model above. Familiar surface, different guts.
 
 This rides tooling that Red Hat / IBM build and actively promote, so it stays
-maintained without vz owning the node runtime:
-
-- **Podman** — `podman kube play` + Quadlet own the node: run a pod from k8s YAML
-  and let systemd supervise it across reboots, with no daemon to attack.
-- **Ansible** — a glorified SSH executor that brings infrastructure-as-code
-  management (idempotent, declarative, auditable) while retaining the **SSH-only
-  attack surface**. No new listening service, no agent — the control channel is
-  the one that was already there.
+maintained without vz owning the node runtime: **Podman** — `podman kube play` +
+Quadlet own the node, running a pod from k8s YAML and letting systemd supervise
+it across reboots with no daemon to attack — and **Ansible** as the agentless
+executor (see "No management components to attack" above).
 
 ## Libertarian cluster
 
@@ -69,3 +71,13 @@ Lightweight is the other half. A small per-node footprint (low RAM, minified
 images) keeps a complex multi-server service cheap enough for a single operator
 to run for years — the affordability that makes the distributed, vendor-
 independent shape practical rather than just principled.
+
+And many small systems are still developed the traditional way: a single node,
+where no scaling or failover ever happens in the background without an admin's
+intervention. That makes Kubernetes' advanced run-time communication — the
+consensus, service meshes, and reconcilers that watch for movement — redundant,
+and it just burns precious RAM. Plenty of applications still subscribe to "start
+the daemons once, run forever," with no movement in between. For them vz provides
+system management through **Ansible**, which is agentless: the machinery runs
+only when the admin invokes a change, and nothing sits resident consuming RAM the
+rest of the time.
