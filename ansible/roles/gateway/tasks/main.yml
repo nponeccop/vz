@@ -9,6 +9,17 @@
 # ansible/requirements.yml) plus firewall-cmd for the one thing the module can't do
 # (policy objects).
 
+# The seed's cloud-init already gave int a static address at genesis (a random
+# /24 per deployment, from genconfig.yml) — that live address IS the Internal
+# segment's subnet, so detect it here instead of trusting a second, independently
+# hardcoded default to have been kept in sync by hand (see defaults/main.yml).
+- name: detect the Internal segment's /24 from int's live IPv4 address
+  ansible.builtin.set_fact:
+    gateway_int_net_detected: "{{ ansible_facts[gateway_int_if]['ipv4']['address'].split('.')[0:3] | join('.') }}"
+  when:
+    - ansible_facts[gateway_int_if] is defined
+    - ansible_facts[gateway_int_if]['ipv4'] is defined
+
 # The kernel half of routing. Written as a drop-in with ansible.builtin so this one
 # setting needs no module — copy is idempotent, the handler applies it live on change.
 - name: IPv4 forwarding (persistent)

@@ -12,11 +12,16 @@
 gateway_ext_if: ext
 gateway_int_if: int
 
-# The /24 prefix for the isolated Internal segment — the single knob for the subnet.
-# Change it (here, via group_vars, or `-e gateway_int_net=10.20.30`) if 10.10.10.x
-# collides with another org network; everything below derives from it. Keep this in
-# sync with int_net in platform/ovh-esxi/config.yml (the seed's static addressing).
-gateway_int_net: "10.10.10"
+# The /24 prefix for the isolated Internal segment — everything below derives from
+# it. Auto-detected (see tasks/main.yml) from the live IPv4 address the seed's
+# cloud-init already assigned to int at genesis (genconfig.yml picks a random /24
+# per deployment precisely so this never has to be a fixed, hand-kept-in-sync
+# value — different ESXi hosts get different subnets for free, which is what lets
+# their Internal segments be wired together later over a VPN/VPC without
+# colliding). The literal below is only the last-resort fallback if int somehow
+# has no address yet. Override with `-e gateway_int_net=10.20.30` to force a
+# different subnet than int's live address.
+gateway_int_net: "{{ gateway_int_net_detected | default('10.10.10') }}"
 
 # Internal DHCP pool handed to the workers. Mirrors the old setup-master-dhcp.sh:
 # DHCP-only (DNS disabled) — clients get a public resolver directly and route out
