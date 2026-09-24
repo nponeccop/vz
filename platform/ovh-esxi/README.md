@@ -151,8 +151,10 @@ integrity is restored by a pinned **sha256** check below; the throwaway Alpine I
 is left unverified, as it only boots a root shell into which you paste your *own*
 key), so **no Python and no pre-staged files** are needed. This snippet
 makes the isolated `Internal` vSwitch, fetches the golden VMDK + Alpine ISO,
-imports the golden VMDK to a base disk, and boots an Alpine live VM on the
-failover IP's virtual MAC:
+imports the golden VMDK to a base disk, then hands off to
+[`genesis-bootstrap.sh`](genesis-bootstrap.sh) (fetch it the same way, or paste
+it in) to build + boot the Alpine bootstrap host on the failover IP's virtual
+MAC:
 
 ```sh
 DS=/vmfs/volumes/<datastore>
@@ -167,71 +169,25 @@ esxcli network vswitch standard portgroup add -p Internal -v vSwitch1
 mkdir -p $DS/images $DS/iso
 wget --no-check-certificate -O $DS/images/golden.vmdk "<release-asset-url>/Rocky-9-...-x86_64.vmdk"
 echo "<pinned-sha256>  $DS/images/golden.vmdk" | sha256sum -c -
-wget --no-check-certificate -O $DS/iso/alpine-$ALPINE_VERSION.iso \
+wget --no-check-certificate -O $DS/iso/alpine-virt-$ALPINE_VERSION-x86_64.iso \
   "https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION%.*}/releases/x86_64/alpine-virt-$ALPINE_VERSION-x86_64.iso"
 
 # (c) import golden to a thin base disk (cloned per VM thereafter)
 vmkfstools -i $DS/images/golden.vmdk -d thin $DS/images/Rocky-9-base.vmdk
 
-# (d) create + boot the Alpine bootstrap host on the failover IP's virtual MAC.
-#     guestOS MUST be "other-64" (ESXi rejects "alpinelinux-64"); the pciSlotNumber /
-#     pciBridge block is required or pvscsi can't get a PCI slot ("No PCIe slot for SCSI0").
-mkdir -p $DS/alpine-genesis
-vmkfstools -c 8G -d thin $DS/alpine-genesis/alpine-genesis.vmdk
-cat > $DS/alpine-genesis/alpine-genesis.vmx <<EOF
-.encoding = "UTF-8"
-config.version = "8"
-virtualHW.version = "21"
-displayName = "alpine-genesis"
-guestOS = "other-64"
-firmware = "efi"
-numvcpus = "2"
-memSize = "2048"
-vmci0.present = "TRUE"
-scsi0.present = "TRUE"
-scsi0.virtualDev = "pvscsi"
-scsi0.pciSlotNumber = "160"
-scsi0:0.present = "TRUE"
-scsi0:0.fileName = "alpine-genesis.vmdk"
-scsi0:0.deviceType = "scsi-hardDisk"
-sata0.present = "TRUE"
-sata0.pciSlotNumber = "32"
-sata0:0.present = "TRUE"
-sata0:0.fileName = "$DS/iso/alpine-$ALPINE_VERSION.iso"
-sata0:0.deviceType = "cdrom-image"
-sata0:0.startConnected = "TRUE"
-ethernet0.present = "TRUE"
-ethernet0.virtualDev = "vmxnet3"
-ethernet0.pciSlotNumber = "192"
-ethernet0.networkName = "VM Network"
-ethernet0.addressType = "static"
-ethernet0.address = "$OVH_MAC"
-ethernet0.checkMACAddress = "FALSE"
-ethernet0.startConnected = "TRUE"
-svga.present = "TRUE"
-svga.autodetect = "TRUE"
-hpet0.present = "TRUE"
-pciBridge0.present = "TRUE"
-pciBridge0.pciSlotNumber = "17"
-pciBridge4.present = "TRUE"
-pciBridge4.virtualDev = "pcieRootPort"
-pciBridge4.functions = "8"
-pciBridge4.pciSlotNumber = "21"
-pciBridge5.present = "TRUE"
-pciBridge5.virtualDev = "pcieRootPort"
-pciBridge5.functions = "8"
-pciBridge5.pciSlotNumber = "22"
-pciBridge6.present = "TRUE"
-pciBridge6.virtualDev = "pcieRootPort"
-pciBridge6.functions = "8"
-pciBridge6.pciSlotNumber = "23"
-pciBridge7.present = "TRUE"
-pciBridge7.virtualDev = "pcieRootPort"
-pciBridge7.functions = "8"
-pciBridge7.pciSlotNumber = "24"
-EOF
-vim-cmd vmsvc/power.on "$(vim-cmd solo/registervm $DS/alpine-genesis/alpine-genesis.vmx)"
+# (d) build + boot the Alpine bootstrap host (guestOS MUST be "other-64" — ESXi
+#     rejects "alpinelinux-64"; see the script for why each field is pinned).
+wget --no-check-certificate -O genesis-bootstrap.sh \
+  "https://raw.githubusercontent.com/nponeccop/vz/master/platform/ovh-esxi/genesis-bootstrap.sh"
+DS=$DS OVH_MAC=$OVH_MAC ALPINE_VERSION=$ALPINE_VERSION VM_NAME=alpine-genesis \
+  sh genesis-bootstrap.sh
 ```
+
+> **Re-genesis / disaster recovery:** the same script is what you run to rebuild
+> a control host after an inventory-wipe (ESXi loses its VM registrations but
+> not datastore files) — set `VM_NAME` to whatever you want the recovery host
+> called, and `ALLOW_MAC_CONFLICT=true` only if you must temporarily reuse a
+> MAC still bound to another (powered-off) VM.
 
 ### 4. Genesis part B — bring the bootstrap host online (browser: ESXi web console)
 
@@ -439,6 +395,7 @@ orders. Not yet a flag.
 
 | File | What it does | Runs on |
 |------|--------------|---------|
+| `genesis-bootstrap.sh` | Build + boot the throwaway Alpine bootstrap host on the failover IP's virtual MAC (genesis step 3, and disaster-recovery re-genesis) | ESXi itself, via its own busybox shell — no Linux host exists yet |
 | `seed.yml` + `roles/esxi_seed/` | The **seeder** (Ansible, SSH-only): create/destroy a Rocky VM over SSH-to-ESXi. `-e vm_role=gateway` = static-network gateway; `-e vm_boot=false` = build+register but don't boot (genesis IP-handoff); `-e state=absent` = destroy | any Linux that can SSH to ESXi — at genesis, the Alpine bootstrap host |
 | `genconfig.yml` + `templates/config.yml.j2` | Generate `config.yml` + `inventory.ini` from the bootstrap host's own default-route NIC | bootstrap host |
 | `config.example.yml` / `inventory.example.ini` | Examples of the generated files | — |
